@@ -1,0 +1,9 @@
+<lint>
+    <!-- A deliberately pinned API 36 spike. API 37 behavior needs a separate
+         SDK/toolchain upgrade and physical-device validation. -->
+    <issue id="OldTargetApi" severity="ignore" />
+    <!-- Dependency upgrades are reviewed independently; do not make a pinned
+         build fail because Maven publishes a newer version. -->
+    <issue id="GradleDependency" severity="ignore" />
+    <issue id="AndroidGradlePluginVersion" severity="ignore" />
+</lint>
