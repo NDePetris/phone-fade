@@ -1,11 +1,104 @@
 # Phone Fade
 
-Personal Android grayscale capability spike. Kotlin, Jetpack Compose, Material 3,
+Personal Android automatic grayscale application. Kotlin, Jetpack Compose, Material 3,
 Gradle Kotlin DSL; application ID `app.ndplabs.phonefade`. Android 10+ (API 29),
-compile/target API 36, initially intended for Pixel 9 Pro. Only **Enable Grayscale**
-and **Restore Color** are implemented. There is no timer, foreground service,
-notification, boot receiver, Accessibility Service, root requirement, internet
-permission, analytics, or external service.
+compile/target API 36, initially intended for Pixel 9 Pro. Automatic monitoring
+counts accumulated unlocked interactive use, applying grayscale when the color
+allowance expires. Short breaks preserve the session. Manual controls and exact
+restoration remain available. No Accessibility Service, Usage Access, root,
+internet permission, analytics, or external service is used.
+
+## Automatic monitoring
+
+Grant the secure-settings permission below, choose settings, tap **Save settings**,
+then **Enable automatic monitoring**. Defaults: 10 minutes of color, 5 minutes for
+a reset. Both inputs accept whole minutes from 1 to 120. Notification permission
+is requested on Android 13+; denying it still permits monitoring, but the service
+notice appears in Android's Active apps list rather than the notification drawer.
+Blocked notifications/channels are also reported in the app on resume.
+
+Only interactive use with keyguard absent consumes allowance. Screen-off starts a
+continuous non-interactive break, including **display timeout**. Screen-on ends
+that break even if the lock screen remains visible. A break of at least the reset
+interval earns a reset, applied when unlocked use resumes. Separate short breaks
+never add up. Grayscale remains applied during short breaks and a qualifying long
+break; original settings are restored at the next unlocked use. No exact wakeup
+at the reset instant is required. These are interactive-state proxies, not a
+complete keyguard history; always-on display and unusual device lock behavior can
+differ from the physical display's power state.
+
+For a 5-minute allowance: use 3 minutes, turn off for 2 minutes, then resume with
+2 minutes left. After exhaustion, a 4-minute break preserves grayscale; a continuous
+5-minute break earns fresh color time at the next unlock.
+
+Settings never clear consumed usage. Reducing allowance can exhaust it immediately;
+increasing it gives a still-color session only the difference. Exhaustion stays
+latched despite allowance increases until a qualifying break or disable/re-enable.
+A changed reset interval applies to the current break; an already earned reset
+remains earned. Manual activation is disabled during automatic monitoring.
+**Disable and restore original settings** cancels monitoring and resets the session.
+If restoration fails, the app retains the snapshot and displays a recovery path.
+
+## Architecture and lifecycle
+
+`SessionEngine` is a pure Kotlin reducer with explicit events, separate session and
+device-activity state, monotonic timestamps, and generation-checked deadlines.
+`PhoneFadeApplication` owns one `PhoneFadeCoordinator`, one controller, and one
+recovery store. A single command queue serializes UI commands, service observations,
+timer callbacks, and boot recovery off the main thread; synchronized coordinator
+methods also protect direct callers. Every display write goes through the existing
+`GrayscaleController`.
+
+The coordinator commits one versioned monitoring checkpoint to separate private
+preferences before effects, then records their verified result. The original
+display snapshot remains in `grayscale_recovery`; a session checkpoint never
+replaces it. Commit failures stop automatic changes and retain display recovery.
+The two journals are not a single transaction: recovery reconciles pending effects
+against actual settings before any new mutation. An applied owned transform is
+recognized without overwriting its snapshot. Partial operations and external
+conflicts retain a manual recovery path.
+
+The user-started foreground service dynamically registers SCREEN_OFF, SCREEN_ON,
+and USER_PRESENT, observes the two display-setting URIs, and schedules the next
+deadline. At most one timer is active; minute checkpoints update confirmed usage
+and notification presentation without one-second polling. Delayed callbacks use
+elapsedRealtime rather than granting additional logical allowance. Actual grayscale
+application can still be delayed by Android scheduling. There are no exact alarms,
+background reset alarms, WorkManager jobs, or wake locks.
+
+Permissions added in PR 2: FOREGROUND_SERVICE, FOREGROUND_SERVICE_SPECIAL_USE,
+POST_NOTIFICATIONS, and RECEIVE_BOOT_COMPLETED. The non-exported `specialUse`
+service includes its subtype justification. Start it from the visible app;
+background-start exceptions are not assumed. START_STICKY permits system recovery,
+not uninterrupted execution or a guaranteed restart time. Google Play reviews
+specialUse declarations separately. See Android's [service types](https://developer.android.com/develop/background-work/services/fgs/service-types),
+[background-start restrictions](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start),
+and [notification permission](https://developer.android.com/develop/ui/compose/notifications/notification-permission).
+
+Ordinary process recovery preserves **confirmed accumulated usage** and resumes at
+a new reliable observation. Unobserved downtime is never charged as unlocked use,
+and a break spanning that gap is never inferred. Stale screen boundaries that
+disagree with current interactive state also trigger conservative reconciliation,
+rather than joining separate breaks. The last uncheckpointed active
+segment (normally less than a minute) can be lost; longer scheduling delays can
+increase undercounting. The app/notification marks recovery as interrupted.
+Reopening and explicitly enabling an interrupted, compatible session resumes its
+confirmed usage; disabling first deliberately starts clean next time.
+
+Confirmed user-requested stops, when available through ApplicationExitInfo on API
+30+, disable the saved session and require explicit re-enabling. API 29 cannot
+identify that exit reason. Force-stop and Android's Active apps Stop can terminate
+the process without callbacks; grayscale cannot be restored at that instant.
+Reopen the app to restore. A dismissed activity task is not a request to disable
+monitoring. See [user-initiated stopping](https://developer.android.com/develop/background-work/services/fgs/handle-user-stopping).
+
+BOOT_COUNT invalidates old monotonic anchors. A minimal BOOT_COMPLETED receiver
+tries exact restoration and clears the old session **without restarting monitoring**.
+The journal is credential-encrypted, so restoration occurs after first unlock,
+not before it. No direct-boot journal migration is introduced. Delivery can be
+delayed or suppressed (including force-stopped apps); revoked permission, corrupt
+storage, or external color-correction changes can prevent restoration. Opening
+the app also reconciles reboot/unknown boot identity and offers manual recovery.
 
 ## Build and test
 
@@ -20,8 +113,7 @@ sdk.dir=C\:/path/to/Android/Sdk
 From PowerShell (use `./gradlew` on macOS/Linux):
 
 ```powershell
-.\gradlew.bat assembleDebug testDebugUnitTest lintDebug --console=plain
-.\gradlew.bat check --console=plain
+.\gradlew.bat assembleDebug testDebugUnitTest testReleaseUnitTest check lintDebug lintRelease --no-watch-fs --console=plain
 git diff --check
 ```
 
@@ -99,9 +191,9 @@ values or reject writes/deletions. This must be tested on your exact Android bui
 
 ## Recovery after failure or interruption
 
-1. Keep the app installed and its data intact. Force-stop, process death or reboot
-   does not automatically restore color; the saved record survives and appears
-   when the app is reopened. Tap **Restore Color**.
+1. Keep the app installed and its data intact. Process death or force-stop may leave
+   grayscale applied. Reboot recovery is best effort after first unlock as described
+   above. Reopen the app and tap **Restore original settings** if needed.
 2. If permission was revoked, grant it again using the command above and retry.
 3. If settings have changed outside Phone Fade, automatic restoration refuses
    unfamiliar combinations. Inspect the current values and decide whether to keep
@@ -143,9 +235,14 @@ Cross-process settings writes are not atomic. The controller serializes its own
 operations and rejects recognizable external changes, but cannot distinguish an
 external write with exactly the same values as its own. Avoid changing Android
 color correction or Developer options' simulated color space while Phone Fade
-owns the settings. There is no background observer or automatic reconciliation.
+owns the settings. While monitoring, a settings observer detects recognizable
+changes and reports attention rather than repeatedly overwriting them.
 
-## Pixel 9 Pro manual checklist (not yet device verified)
+## PR 1 reference checklist
+
+The user reports seven PR 1 acceptance tests completed successfully on Pixel 9 Pro.
+See VALIDATION.md for the evidence distinction. The expanded reference list below
+is not a claim that every listed subcase was executed.
 
 - [ ] Record Android version/build and the external preflight snapshot. Use a color
   photo or home screen as a visual reference; inspect the physical screen, since
@@ -161,7 +258,7 @@ owns the settings. There is no background observer or automatic reconciliation.
 - [ ] Repeat at least five enable/restore cycles; rapidly tap Enable and rotate the
   phone during an operation. Confirm no snapshot replacement or overlapping action.
 - [ ] Force-stop the app while grayscale is active, reopen, confirm saved recovery
-  commands and Restore work. Repeat after reboot; no automatic restore is expected.
+  commands and Restore work. For PR 2 reboot expectations, use the checklist below.
 - [ ] Revoke permission while grayscale is active. Restore must report the missing
   grant and retain the record. Regrant, resume and restore successfully.
 - [ ] Enable Android Accessibility color correction first. Phone Fade must refuse
@@ -176,3 +273,47 @@ owns the settings. There is no background observer or automatic reconciliation.
   system appearance. Ensure setup and recovery text remain reachable by scrolling.
 
 See [VALIDATION.md](VALIDATION.md) for checks performed in the development environment.
+
+## PR 2 Pixel 9 Pro acceptance checklist (pending physical execution)
+
+Record Android build, allowance/reset values, timestamps, original key presence and
+values, observed notification states, and physical color/grayscale results. Inspect
+the physical screen: screenshots need not capture the display transform.
+
+- [ ] Set both intervals to 1 minute; verify automatic grayscale after unlocked use.
+- [ ] Use 20 seconds, turn off for 20 seconds, unlock: approximately 40 seconds remain.
+- [ ] Exhaust allowance; verify a short break retains grayscale without new snapshot.
+- [ ] Take a continuous break of at least 1 minute; unlock: exact original settings
+  return and a full new allowance starts. Test the exact boundary with automated
+  tests; device timing needs tolerance for broadcast receipt.
+- [ ] Repeat several shorter breaks; they must never combine into a reset.
+- [ ] Wake to the lock screen before the reset interval, wait there, then unlock:
+  the awake locked time must not extend the break. Test display timeout and AOD.
+- [ ] Change allowance/reset during use/break; verify documented preservation and
+  exhaustion latching. Duplicate/rapid enable, disable, lock, and unlock commands
+  must not replace the snapshot or re-enable after disabling.
+- [ ] Disable while grayscale: verify exact values/absence and color. Re-enable:
+  a new full allowance begins. Test missing/revoked secure-settings permission.
+- [ ] Start with Android correction already active: activation must refuse it.
+  Change correction externally during monitoring: attention must appear and the
+  unfamiliar configuration must remain protected on attempted restoration.
+- [ ] Reopen/rotate/dismiss the activity while monitoring; the service continues.
+  Test ordinary process termination separately from force-stop: a debug device
+  can send SIGKILL to the app PID using `adb shell run-as app.ndplabs.phonefade kill -9 PID`.
+  Confirm sticky recovery preserves confirmed usage/owned grayscale and reports
+  interruption. A restart is not guaranteed; if absent, reopen and enable to resume.
+- [ ] Test `adb shell am force-stop app.ndplabs.phonefade` and
+  `adb shell cmd activity stop-app app.ndplabs.phonefade` separately. Reopen:
+  no automatic monitoring after a confirmed user stop; original settings restore
+  if possible. Do not use force-stop as proof of ordinary process recovery.
+- [ ] Reboot while grayscale; after first unlock verify restoration and monitoring
+  disabled. Repeat force-stopped/revoked-permission cases; verify retained manual
+  recovery when boot delivery/restoration is unavailable.
+- [ ] Test notification permission allow/deny and channel blocking; verify reduced
+  visibility messaging, accurate paused/grayscale/attention state, and tap-to-app.
+- [ ] Exercise repeated sessions during ordinary usage; confirm no unexpected
+  grayscale ownership or lost snapshot. Check portrait/landscape, large font,
+  screen reader, light/dark appearance, and scrolling to all recovery controls.
+
+Temporary-color overrides, exclusions, analytics, tiles, widgets, daily budgets,
+schedules, cloud sync, and automatic monitoring at boot remain out of scope.

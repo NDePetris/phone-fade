@@ -21,7 +21,14 @@ data class ControllerStatus(
     val current: ColorSettings? = null,
     val original: ColorSettings? = null,
     val message: String = "Checking display settings…",
+    val readable: Boolean = false,
+    val operationSucceeded: Boolean = false,
 )
+{
+    val ownsGrayscale get() = readable && original != null && current == ColorSettings("1", "0")
+    val canEnable get() = readable && permissionGranted && original == null && current != null &&
+        current.enabled in listOf(null, "0") && (current.mode == null || current.mode.matches(Regex("-?[0-9]+")))
+}
 
 class GrayscaleController(
     private val settings: DisplaySettings,
@@ -36,7 +43,7 @@ class GrayscaleController(
     }
 
     @Synchronized
-    fun status(): ControllerStatus = inspect("Ready. This spike only changes color manually.")
+    fun status(): ControllerStatus = inspect("Display settings checked.")
 
     @Synchronized
     fun enable(): ControllerStatus {
@@ -56,7 +63,7 @@ class GrayscaleController(
             writeVerified(MODE, "0")
             writeVerified(ENABLED, "1")
             check(readPair() == ColorSettings("1", "0")) { "Activation verification failed" }
-            return inspect("Grayscale settings applied. Confirm the visual effect on your device.")
+            return inspect("Grayscale settings applied. Confirm the visual effect on your device.", true)
         } catch (error: Exception) {
             // A write may have changed the provider even when it threw or returned false.
             val rollback = try { restoreSaved(); "Original settings restored." }
@@ -67,11 +74,11 @@ class GrayscaleController(
 
     @Synchronized
     fun restore(): ControllerStatus = try {
-        if (recovery.load() == null) inspect("No saved configuration. Nothing changed.")
+        if (recovery.load() == null) inspect("No saved configuration. Nothing changed.", true)
         else {
             check(settings.hasWritePermission()) { "Permission missing; grant it again to restore" }
             restoreSaved()
-            inspect("Original color-correction settings restored.")
+            inspect("Original color-correction settings restored.", true)
         }
     } catch (error: Exception) {
         inspect("Restore failed: ${error.description()}. Recovery record retained; see saved ADB commands.")
@@ -110,7 +117,7 @@ class GrayscaleController(
 
     private fun readPair() = ColorSettings(settings.read(ENABLED), settings.read(MODE))
 
-    private fun inspect(message: String): ControllerStatus {
+    private fun inspect(message: String, succeeded: Boolean = false): ControllerStatus {
         var permission = false
         var current: ColorSettings? = null
         var original: ColorSettings? = null
@@ -121,7 +128,8 @@ class GrayscaleController(
         catch (error: Exception) { errors += "Recovery record unavailable: ${error.description()}. Consult your preflight ADB snapshot." }
         try { current = readPair() }
         catch (error: Exception) { errors += "Settings read failed: ${error.description()}" }
-        return ControllerStatus(permission, current, original, (listOf(message) + errors).joinToString("\n"))
+        return ControllerStatus(permission, current, original, (listOf(message) + errors).joinToString("\n"),
+            errors.isEmpty(), succeeded && errors.isEmpty())
     }
 
     private fun Exception.description() = message ?: javaClass.simpleName
