@@ -56,7 +56,7 @@ class PhoneFadeCoordinatorTest {
         assertNull(saved.session.deadline(saved.config))
         assertFalse(c.state.value.display.ownsGrayscale)
         assertEquals(ColorSettings("0", "12"), current); assertNull(original)
-        assertEquals("Color: 1 minutes remaining · waiting for unlock", MonitoringNotification.text(c.state.value, now))
+        assertEquals("Color: 1 minute remaining · waiting for unlock", MonitoringNotification.text(c.state.value, now))
         now += 120_000
         assertEquals(60_000L, saved.session.remaining(saved.config, now))
         c.event(ScreenEventMapper.event(ScreenSignal.USER_PRESENT, DeviceActivity.LOCKED))
@@ -66,7 +66,7 @@ class PhoneFadeCoordinatorTest {
         assertEquals(now, saved.session.activeSince)
         assertEquals(ColorSettings("0", "12"), current); assertNull(original)
         assertNull(saved.pending); assertNull(saved.attention)
-        assertEquals("Color: 1 minutes remaining", MonitoringNotification.text(c.state.value, now))
+        assertEquals("Color: 1 minute remaining", MonitoringNotification.text(c.state.value, now))
         val count = writes
         now += 100
         c.event(ScreenEventMapper.event(ScreenSignal.USER_PRESENT, DeviceActivity.LOCKED))
@@ -154,7 +154,7 @@ class PhoneFadeCoordinatorTest {
         assertEquals(60_000L, saved.session.consumedMs); assertFalse(saved.session.resetEarned)
         assertNull(saved.session.activeSince); assertEquals(DisplayEffect.RESTORE, saved.pending)
         assertNotNull(saved.attention)
-        assertEquals("Attention required — open Phone Fade", MonitoringNotification.text(c.state.value, now))
+        assertEquals("Attention required — open Offramp Fade", MonitoringNotification.text(c.state.value, now))
         val count = writes; now += 90_000; c.event(SessionEvent.Observe(DeviceActivity.UNLOCKED))
         assertEquals(count, writes); writeFailed = false; c.disable(); assertNull(original)
     }

@@ -1,10 +1,102 @@
-# Phone Fade validation
+# Offramp Fade validation
+
+## PR 3 — Product identity and everyday experience — October 13, 2026
+
+Base: refreshed merged `main` (`69b3fdb`). Branch:
+`feat/offramp-fade-everyday-experience`. No push, PR creation, merge, repository
+rename, release, device installation, or physical display mutation was performed.
+
+### Automated checks
+
+With installed Temurin JDK 17.0.20, SDK Platform 36, Build Tools 35.0.0 and the
+pinned wrapper:
+
+```powershell
+$env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot'
+.\gradlew.bat assembleDebug testDebugUnitTest testReleaseUnitTest check lintDebug lintRelease --no-watch-fs --console=plain
+git diff --check
+```
+
+- Full build/test/check/lint command passed. Both lint reports: **No issues found**.
+- **154 tests per variant, 308 executions, zero failures**: 27 controller, 42
+  existing coordinator, 28 existing reducer, 5 mapper, 3 store, 6 migration,
+  5 countdown/presentation, 12 override reducer, 26 override coordinator.
+- All 105 prior tests remain, with expected branded/plural text and the v2
+  purpose-aware checkpoint fixture updated. 49 new regression tests cover override
+  entry/expiry, short/qualifying breaks, locked boundaries, configuration changes,
+  duplicate requests, stale timers, interrupted use, migration and malformed
+  records, exact absent-key recovery, and operation-persistence failures.
+- Fault tests use the real controller with deterministic fake providers, journals,
+  clocks and monitoring storage. They simulate process death after each restore
+  or reactivation write, death after journal clearing, restoration/clear failures,
+  successful mutation followed by failed completion persistence, pending reactivation
+  without writes, partial activation recovery, external changes, permission loss,
+  service destruction, reboot, user-stop cancellation, and queued screen boundaries during slow restoration. They do not prove Android
+  provider durability, broadcast delivery, or physical display behavior.
+- Build Tools 35.0.0 `aapt2 dump permissions` confirms the unchanged permission set:
+  WRITE_SECURE_SETTINGS, FOREGROUND_SERVICE, FOREGROUND_SERVICE_SPECIAL_USE,
+  POST_NOTIFICATIONS, RECEIVE_BOOT_COMPLETED, and the app-local AndroidX receiver
+  permission. **No Internet permission** or new permission was added.
+- APK badging confirms `app.ndplabs.phonefade`, label **Offramp Fade**, minimum
+  API 29 and target API 36. Packages, components, storage identifiers, notification
+  channel ID, and ADB grant command remain stable.
+- The design helper returned no mechanical findings for the Compose files; this
+  is not rendered UI or accessibility acceptance.
+- The initial sandboxed wrapper run could not open its external cache lock.
+  Validation used approved access to the existing Gradle cache/SDK. Earlier test
+  failures were stale text/fixture expectations, corrected before the passing run.
+
+### Manual device tests and untested cases
+
+**PR 3 physical tests: not performed.** No configured local AVD was available for
+rendered UI inspection. Pixel 9 Pro OS/build is therefore not asserted. Use the
+[PR 3 acceptance checklist](README.md#pr-3-pixel-9-pro-acceptance-checklist-not-performed)
+for real display changes, upgrade/grant preservation, large text/TalkBack/themes,
+foreground lifecycle, notifications, force-stop, reboot and external conflicts.
+Historical PR 1/PR 2 device reports remain separate evidence below.
+
+### Recovery and compatibility risk
+
+Display writes still use the shared controller and independent original-settings
+journal. The override begins only after verified restoration and durable completion;
+reactivation verifies the exact baseline and preserves absent rows. Completion
+commit failures retain pending intent and surface attention. Partial activation
+recovery restores through the existing journal and requires review instead of
+silently retrying. Exact original snapshots are never replaced while pending.
+
+Checkpoint v2 preserves valid v1 configuration/confirmed usage/exhaustion and
+migrates pending effects with explicit purpose/target. V1 did not retain pre-reset
+usage before its pending restoration, so migration cannot reconstruct that lost
+history. Downgrading to a v1-only build while v2 is stored is unsupported: that
+build rejects the unknown monitoring version; the unchanged display recovery
+journal still permits manual restoration. Restore and disable before downgrading;
+do not clear data to work around this boundary.
+
+Unknown downtime is not charged or treated as a break. Uncheckpointed override
+usage can be lost; delayed scheduling can extend physical color beyond the logical
+deadline. Force-stop/service termination/reboot do not guarantee immediate recovery.
+Boot remains best effort after first unlock without starting monitoring. Observable
+external changes stop automatic effects; identical cross-process writes cannot be
+identified conclusively. UI text reflects verified provider state, not proof of
+actual physical grayscale.
+
+## Evidence reconciliation — October 13, 2026
+
+PR 2 automatic monitoring merged as GitHub [PR #3](https://github.com/NDePetris/phone-fade/pull/3)
+into `main` (`69b3fdb`). The historical runs below accurately record what the agent
+ran at those times; “no push/merge” and “physical pending” in those entries are
+historical, not current branch status. The merged PR author reported Pixel 9 Pro
+core activation, short-break preservation, qualifying wake restoration before
+unlock, unlock-only fresh-allowance counting, and disable restoration passing.
+The exact Android build, individual logs, and timestamps were not supplied.
+Not every interruption/recovery scenario was reported physically validated.
+PR 3 has its own pending physical checklist and cannot inherit those pass claims.
 
 ## Automatic monitoring lock-screen reset correction — October 13, 2026
 
 Branch: `feat/automatic-session-monitoring`. Local documents call this work PR 2;
 GitHub's numbered PR #2 is the already merged engineering harness on a different
-branch. This correction is committed only to the current monitoring branch.
+branch. At the time of this historical run, this correction was only on the monitoring branch. It subsequently merged as GitHub PR #3, commit `69b3fdb`.
 The existing uncommitted unlock-broadcast fixes and debug diagnostics are preserved
 with the correction and covered by the same validation.
 
@@ -32,7 +124,7 @@ with the correction and covered by the same validation.
 - The sandboxed wrapper initially could not access the external Gradle cache lock;
   validation ran with approved cache/SDK access. SDK XML tooling-version warning
   appeared; it did not fail build/tests/lint.
-- Physical acceptance remains pending. Follow the updated [README checklist](README.md#pr-2-pixel-9-pro-acceptance-checklist-pending-physical-execution)
+- Physical acceptance remains pending. Follow the updated [README checklist](README.md#pr-2-pixel-9-pro-reference-checklist)
   and the debug-log capture in BUG_INVESTIGATION.md. No device installation or
   physical display confirmation was performed. No push or merge was performed.
 
@@ -108,7 +200,7 @@ notification presentation.
 - The final incremental validation run emitted no new tooling warnings. Earlier
   Java 25 configuration warnings/failure were resolved by selecting JDK 17.
 
-PR 2 physical acceptance completed as per the dedicated [README checklist](README.md#pr-2-pixel-9-pro-acceptance-checklist-pending-physical-execution).
+The merged PR author subsequently reported core Pixel 9 Pro acceptance. See the status note below; the expanded README reference checklist is not a claim that every subcase passed.
 
 ### Environment and known limitations
 
@@ -196,5 +288,4 @@ checks. API 37 is not targeted or device-validated. No separate formatter or oth
 static analyzer is configured; Kotlin compilation and Android Lint are the static
 checks for this minimal project.
 
-PR 1 was subsequently merged as `8db2271`. PR 2 remains on its separate feature
-branch and is not pushed or merged by this implementation.
+PR 1 was subsequently merged as `8db2271`. PR 2 subsequently merged as GitHub PR #3, commit `69b3fdb`, on October 13, 2026.

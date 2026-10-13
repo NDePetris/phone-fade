@@ -7,6 +7,9 @@ data class MonitoringCheckpoint(
     val pending: DisplayEffect? = null,
     val attention: String? = null,
     val interrupted: Boolean = false,
+    val pendingPurpose: OperationPurpose? = null,
+    val pendingTarget: SessionState? = null,
+    val expectedBaseline: ColorSettings? = null,
 )
 
 interface MonitoringStore {

@@ -10,12 +10,12 @@ earlier findings below describe the unlock-broadcast investigation before this
 follow-up. The current expected chain is SCREEN_OFF, then SCREEN_ON with exact
 restoration, cleared exhaustion/usage and no active allowance anchor, then
 USER_PRESENT (or an unlocked-state reconciliation) starting the full allowance.
-The locked notification reads `Color: 1 minutes remaining · waiting for unlock`
+The locked notification reads `Color: 1 minute remaining · waiting for unlock`
 for a one-minute allowance. While locked, a one-second reconciliation timer covers
 missing unlock delivery, including exhausted sessions with no allowance deadline.
 Failures retain the recovery record, prior consumed usage/exhaustion, pending
 RESTORE and attention; no timing resumes. See the updated README device checklist
-and VALIDATION.md for follow-up validation. Physical confirmation remains pending.
+and VALIDATION.md for follow-up validation. This was pending at investigation time. PR 2 subsequently merged as GitHub PR #3 (`69b3fdb`); its author reported core Pixel 9 Pro wake/unlock behavior passing. Exact OS/build logs and full lifecycle acceptance were not supplied. PR 3 physical acceptance is separate and pending.
 
 ## Findings and correction
 

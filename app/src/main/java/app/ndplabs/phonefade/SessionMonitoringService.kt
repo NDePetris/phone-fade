@@ -32,6 +32,7 @@ class SessionMonitoringService : Service() {
     private var collector: Job? = null
     private var registered = false
     private var promoted = false
+    private var lastNotificationText: String? = null
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val signal = when (intent.action) {
@@ -95,9 +96,12 @@ class SessionMonitoringService : Service() {
                     timer?.cancel()
                     if (!state.running) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return@collect }
                     val text = MonitoringNotification.text(state, SystemClock.elapsedRealtime())
-                    val notification = MonitoringNotification.create(this@SessionMonitoringService, text)
-                    // startForeground remains legal when notification permission is denied.
-                    startForeground(MonitoringNotification.ID, notification)
+                    if (text != lastNotificationText) {
+                        val notification = MonitoringNotification.create(this@SessionMonitoringService, text)
+                        // startForeground remains legal when notification permission is denied.
+                        startForeground(MonitoringNotification.ID, notification)
+                        lastNotificationText = text
+                    }
                     PhoneFadeLog.debug("notification published generation=${state.checkpoint.session.generation} text=$text")
                     val cp = state.checkpoint
                     val deadline = cp.session.deadline(cp.config)

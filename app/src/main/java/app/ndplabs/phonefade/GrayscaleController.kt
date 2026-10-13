@@ -46,13 +46,16 @@ class GrayscaleController(
     fun status(): ControllerStatus = inspect("Display settings checked.")
 
     @Synchronized
-    fun enable(): ControllerStatus {
+    fun enable(expectedBaseline: ColorSettings? = null): ControllerStatus {
         try {
             if (!settings.hasWritePermission()) return inspect("Permission missing. Complete ADB setup first.")
-            if (recovery.load() != null) return inspect("Recovery record exists. Restore Color before enabling again.")
+            if (recovery.load() != null) return inspect("Recovery record exists. Restore original settings before enabling again.")
             val original = readPair()
+            if (expectedBaseline != null && original != expectedBaseline) {
+                return inspect("Display settings changed during temporary color. Review them before recovery.")
+            }
             if (original.enabled != null && original.enabled != "0") {
-                return inspect("Color correction is already active or unrecognized. Phone Fade will not take control.")
+                return inspect("Color correction is already active or unrecognized. Offramp Fade will not take control.")
             }
             check(original.mode == null || original.mode.matches(Regex("-?[0-9]+"))) {
                 "Unrecognized color-correction mode; no settings changed"
@@ -67,14 +70,19 @@ class GrayscaleController(
         } catch (error: Exception) {
             // A write may have changed the provider even when it threw or returned false.
             val rollback = try { restoreSaved(); "Original settings restored." }
-            catch (_: Exception) { "Recovery required. Use Restore Color or the saved ADB commands." }
+            catch (_: Exception) { "Recovery required. Use Restore original settings or the saved ADB commands." }
             return inspect("Enable failed: ${error.description()}. $rollback")
         }
     }
 
     @Synchronized
-    fun restore(): ControllerStatus = try {
-        if (recovery.load() == null) inspect("No saved configuration. Nothing changed.", true)
+    fun restore(expectedBaseline: ColorSettings? = null): ControllerStatus = try {
+        val saved = recovery.load()
+        check(expectedBaseline == null || saved == null || saved == expectedBaseline) { "Recovery snapshot does not match the expected display baseline" }
+        if (saved == null) {
+            check(expectedBaseline == null || readPair() == expectedBaseline) { "Display settings changed during temporary color" }
+            inspect("No saved configuration. Nothing changed.", true)
+        }
         else {
             check(settings.hasWritePermission()) { "Permission missing; grant it again to restore" }
             restoreSaved()
@@ -94,7 +102,7 @@ class GrayscaleController(
         check(current.enabled in listOf(original.enabled, "0", "1") &&
             current.mode in listOf(original.mode, "0") &&
             !(current.enabled == "1" && current.mode != "0")) {
-            "Display settings changed outside Phone Fade; inspect them before manual recovery"
+            "Display settings changed outside Offramp Fade; inspect them before manual recovery"
         }
         if (current == original) {
             recovery.clear()

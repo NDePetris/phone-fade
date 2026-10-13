@@ -125,7 +125,7 @@ class GrayscaleControllerTest {
 
     @Test fun repeatedEnableDoesNotReplaceSnapshotOrWriteAgain() {
         controller.enable()
-        assertTrue(controller.enable().message.contains("Restore Color"))
+        assertTrue(controller.enable().message.contains("Restore original settings"))
         assertEquals(2, settings.writes.size)
         assertEquals(ColorSettings("0", "12"), recovery.original)
     }
@@ -265,7 +265,7 @@ class GrayscaleControllerTest {
         controller.enable()
         settings.values[GrayscaleController.MODE] = "11"
         val count = settings.writes.size
-        assertTrue(controller.restore().message.contains("outside Phone Fade"))
+        assertTrue(controller.restore().message.contains("outside Offramp Fade"))
         assertEquals(count, settings.writes.size)
         assertNotNull(recovery.original)
     }
