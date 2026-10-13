@@ -1,5 +1,64 @@
 # Phone Fade validation
 
+## Automatic monitoring lock-screen reset correction — October 13, 2026
+
+Branch: `feat/automatic-session-monitoring`. Local documents call this work PR 2;
+GitHub's numbered PR #2 is the already merged engineering harness on a different
+branch. This correction is committed only to the current monitoring branch.
+The existing uncommitted unlock-broadcast fixes and debug diagnostics are preserved
+with the correction and covered by the same validation.
+
+- A qualifying continuous OFF interval now restores through the serialized
+  coordinator/controller at wake, clears prior consumption/exhaustion, and leaves
+  no active allowance anchor while keyguard is showing. Unlock begins counting
+  from the full allowance. No-keyguard wake begins counting immediately.
+- Interactive lock-screen time neither consumes allowance nor extends the OFF
+  interval. Each wake ends that interval; separate short breaks preserve usage
+  and grayscale. One-second state checks while LOCKED reconcile missed unlocks,
+  including exhausted sessions that have no allowance deadline.
+- Restore failure retains prior usage/exhaustion and the original recovery record,
+  leaves RESTORE pending, clears the active anchor, and surfaces attention. Display
+  writes, exact snapshots, conflict checks, and process/boot recovery still use
+  the existing controller and journals. Obsolete Recover observations are ignored.
+- `assembleDebug testDebugUnitTest testReleaseUnitTest check lintDebug lintRelease
+  --no-watch-fs --console=plain` passed with the installed JDK 17.
+- **105 tests passed in each variant (210 executions)**: 27 controller, 3 storage,
+  42 coordinator, 5 screen-event mapper, and 28 reducer tests. All prior unlock
+  regressions pass with the new wake-time restoration expectation. Coverage includes
+  full allowance while locked, reconciliation/no-keyguard unlock, repeated wakes,
+  duplicate/delayed observations, failure/conflict preservation, and recovery of
+  a fresh paused allowance. Both lint reports: **No issues found**.
+- `git diff --check` and staged whitespace validation passed before commit.
+- The sandboxed wrapper initially could not access the external Gradle cache lock;
+  validation ran with approved cache/SDK access. SDK XML tooling-version warning
+  appeared; it did not fail build/tests/lint.
+- Physical acceptance remains pending. Follow the updated [README checklist](README.md#pr-2-pixel-9-pro-acceptance-checklist-pending-physical-execution)
+  and the debug-log capture in BUG_INVESTIGATION.md. No device installation or
+  physical display confirmation was performed. No push or merge was performed.
+
+## PR 2 unlock bug investigation — October 13, 2026
+
+See [the investigation and Pixel ADB capture procedure](BUG_INVESTIGATION.md).
+Corrected API 33+ receiver registration to receive protected USER_PRESENT from
+SystemUI's separate UID, and preserved explicit unlock evidence when an interactive
+keyguard snapshot still reports locked. Added debug-only `PhoneFade` diagnostics
+for receiver delivery, platform snapshots, command processing, service lifecycle,
+coordinator state, notification publication, and timers. Controller ownership,
+restoration, and recovery protocols are unchanged.
+
+Final JDK 17 command: `assembleDebug testDebugUnitTest testReleaseUnitTest check
+lintDebug lintRelease --no-watch-fs --console=plain`.
+
+- Debug APK build and all requested checks passed.
+- 92 tests passed in each variant (184 executions), including eight new regressions.
+- Both lint reports: **No issues found**. `git diff --check` passed.
+- Initial wrapper-cache sandbox denial and Java 25 configuration failure were
+  resolved with external cache/SDK access and explicit JAVA_HOME for JDK 17.
+- The first JDK 17 run emitted an SDK XML tooling-version warning; the final
+  incremental validation passed without that warning.
+- No device installation, physical reproduction, push, or merge was performed.
+  Android delivery and physical restoration confirmation remain device checks.
+
 ## PR 2 implementation
 
 Branch: `feat/automatic-session-monitoring`, based on merged PR 1 `8db2271`.

@@ -22,11 +22,33 @@ class SessionEngineTest {
     @Test fun shortBreakPreservesUsage() { start(); off(180_000); on(300_000); unlock(310_000); assertEquals(120_000, state.remaining(config, 310_000)) }
     @Test fun offTimeNeverConsumesUsage() { start(); off(40_000); at(500_000, SessionEvent.Deadline(state.generation)); assertEquals(40_000, state.consumedMs); assertNull(effect) }
     @Test fun shortBreakPreservesExhaustion() { start(); at(300_000, SessionEvent.Deadline(state.generation)); off(310_000); unlock(400_000); assertTrue(state.exhausted); assertEquals(DisplayEffect.ENABLE, effect) }
-    @Test fun exactResetRestoresAndResets() { start(); off(100_000); on(400_000); unlock(410_000); assertEquals(DisplayEffect.RESTORE, effect); assertEquals(0, state.consumedMs) }
+    @Test fun exactResetRestoresAndResets() { start(); off(100_000); on(400_000); assertEquals(DisplayEffect.RESTORE, effect); assertEquals(0, state.consumedMs); unlock(410_000); assertNull(effect); assertEquals(0, state.consumedMs) }
     @Test fun exhaustedLongBreakRestores() { start(); at(300_000, SessionEvent.Deadline(state.generation)); off(310_000); unlock(700_000); assertFalse(state.exhausted); assertEquals(DisplayEffect.RESTORE, effect) }
     @Test fun awakeLockScreenDoesNotExtendBreak() { start(); off(100_000); on(200_000); unlock(900_000); assertFalse(state.resetEarned); assertEquals(100_000, state.consumedMs) }
     @Test fun separateShortBreaksDoNotCombine() { start(); off(100_000); on(300_000); off(310_000); unlock(510_000); assertEquals(100_000, state.consumedMs) }
-    @Test fun qualifyingBreakStaysEarnedUntilUnlock() { start(); off(100_000); on(400_000); off(410_000); unlock(420_000); assertEquals(DisplayEffect.RESTORE, effect) }
+    @Test fun freshAllowanceSurvivesAnotherShortBreakBeforeUnlock() { start(); off(100_000); on(400_000); assertEquals(DisplayEffect.RESTORE, effect); off(410_000); unlock(420_000); assertNull(effect); assertEquals(300_000, state.remaining(config, 420_000)) }
+    @Test fun qualifyingWakeWaitsIndefinitelyWithoutChargingKeyguard() {
+        start(); off(100_000); on(400_000)
+        assertNull(state.activeSince); assertNull(state.deadline(config)); assertNull(state.breakSince)
+        on(900_000); assertNull(effect); assertEquals(300_000, state.remaining(config, 900_000))
+        unlock(1_000_000); assertEquals(1_000_000L, state.activeSince)
+        unlock(1_000_500); assertEquals(500L, state.consumedMs)
+    }
+    @Test fun repeatedLockScreenWakesInterruptReset() {
+        start(); at(300_000, SessionEvent.Deadline(state.generation)); off(310_000)
+        repeat(4) { i -> on(510_000 + i * 210_000L); assertNull(effect); off(520_000 + i * 210_000L) }
+        unlock(1_200_000); assertTrue(state.exhausted); assertFalse(state.resetEarned)
+    }
+    @Test fun obsoleteReconciliationCannotEraseNewerUnlock() {
+        start(); unlock(1000); at(500, SessionEvent.Recover(DeviceActivity.OFF))
+        assertEquals(DeviceActivity.UNLOCKED, state.activity); assertEquals(1000L, state.consumedMs)
+    }
+    @Test fun legacyEarnedResetRestoresWhileLocked() {
+        state = SessionState(enabled = true, hasSession = true, consumedMs = 300_000,
+            exhausted = true, resetEarned = true)
+        on(1000); assertEquals(DisplayEffect.RESTORE, effect); assertFalse(state.resetEarned)
+        assertEquals(300_000L, state.remaining(config, 1000)); assertNull(state.activeSince)
+    }
     @Test fun rapidCyclesAccumulateOnlyActiveTime() { start(); repeat(100) { i -> off(i * 1000L + 500); unlock(i * 1000L + 1000) }; assertEquals(50_000, state.consumedMs) }
     @Test fun duplicateOffKeepsOriginalAnchor() { start(); off(100); off(200); assertEquals(100L, state.breakSince) }
     @Test fun duplicateUnlockDoesNotResetUsage() { start(); unlock(100); unlock(200); assertEquals(200, state.consumedMs) }

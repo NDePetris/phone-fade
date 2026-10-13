@@ -20,22 +20,23 @@ Blocked notifications/channels are also reported in the app on resume.
 Only interactive use with keyguard absent consumes allowance. Screen-off starts a
 continuous non-interactive break, including **display timeout**. Screen-on ends
 that break even if the lock screen remains visible. A break of at least the reset
-interval earns a reset, applied when unlocked use resumes. Separate short breaks
-never add up. Grayscale remains applied during short breaks and a qualifying long
-break; original settings are restored at the next unlocked use. No exact wakeup
+interval restores original settings immediately at screen-on, even on the lock
+screen, and makes the full fresh allowance available. Counting starts only when
+unlocked use resumes. Separate short breaks never add up. Grayscale remains
+applied during short breaks and while the screen is off. No exact wakeup
 at the reset instant is required. These are interactive-state proxies, not a
 complete keyguard history; always-on display and unusual device lock behavior can
 differ from the physical display's power state.
 
 For a 5-minute allowance: use 3 minutes, turn off for 2 minutes, then resume with
 2 minutes left. After exhaustion, a 4-minute break preserves grayscale; a continuous
-5-minute break earns fresh color time at the next unlock.
+5-minute break restores color at wake and leaves fresh color time waiting for unlock.
 
 Settings never clear consumed usage. Reducing allowance can exhaust it immediately;
 increasing it gives a still-color session only the difference. Exhaustion stays
 latched despite allowance increases until a qualifying break or disable/re-enable.
 A changed reset interval applies to the current break; an already earned reset
-remains earned. Manual activation is disabled during automatic monitoring.
+remains available. Manual activation is disabled during automatic monitoring.
 **Disable and restore original settings** cancels monitoring and resets the session.
 If restoration fails, the app retains the snapshot and displays a recovery path.
 
@@ -63,7 +64,10 @@ and USER_PRESENT, observes the two display-setting URIs, and schedules the next
 deadline. At most one timer is active; minute checkpoints update confirmed usage
 and notification presentation without one-second polling. Delayed callbacks use
 elapsedRealtime rather than granting additional logical allowance. Actual grayscale
-application can still be delayed by Android scheduling. There are no exact alarms,
+application can still be delayed by Android scheduling. While interactive and
+locked, one timer checks the current interactive/keyguard state each second to
+reconcile a missed unlock; USER_PRESENT remains the primary unlock evidence.
+No allowance is charged during these locked checks. There are no exact alarms,
 background reset alarms, WorkManager jobs, or wake locks.
 
 Permissions added in PR 2: FOREGROUND_SERVICE, FOREGROUND_SERVICE_SPECIAL_USE,
@@ -283,9 +287,29 @@ the physical screen: screenshots need not capture the display transform.
 - [ ] Set both intervals to 1 minute; verify automatic grayscale after unlocked use.
 - [ ] Use 20 seconds, turn off for 20 seconds, unlock: approximately 40 seconds remain.
 - [ ] Exhaust allowance; verify a short break retains grayscale without new snapshot.
-- [ ] Take a continuous break of at least 1 minute; unlock: exact original settings
-  return and a full new allowance starts. Test the exact boundary with automated
-  tests; device timing needs tolerance for broadcast receipt.
+- [ ] Exhaust allowance, turn the screen off for over 90 seconds, then wake without
+  unlocking (avoid face/fingerprint auto-unlock). Verify physical color returns on
+  the lock screen immediately and both settings/absence match the original snapshot.
+  Notification: `Color: 1 minutes remaining · waiting for unlock`.
+- [ ] Keep the lock screen interactive for over 90 seconds (wake before timeout if
+  necessary). The full allowance must remain available. Unlock: color remains for
+  a full minute of unlocked use before grayscale returns. Use diagnostic timestamps
+  for timing; the exact reset boundary is covered by automated tests.
+- [ ] After exhaustion, wake after a 20-second break without unlocking. Grayscale
+  and consumed usage must remain. Wait on the lock screen for over a minute and
+  unlock: grayscale still remains. Repeat off/wake cycles below the reset threshold;
+  their combined off time must never reset usage. Also repeat before exhaustion to
+  verify that partially consumed allowance resumes with only its remainder.
+- [ ] Test genuine PIN, fingerprint, and face unlock and a device configured without
+  an active keyguard. Wake without keyguard starts the full allowance immediately;
+  duplicate broadcasts must not grant another reset. Verify a genuine unlock missed
+  by the receiver is reconciled within ordinary scheduling tolerance. Do not spoof
+  USER_PRESENT with `am broadcast`; it is a protected system action.
+- [ ] With grayscale active, take a qualifying break and revoke WRITE_SECURE_SETTINGS
+  before wake. Wake must surface attention, retain the original snapshot, and avoid
+  announcing a fresh allowance or counting after unlock. Regrant and use Disable
+  and restore; confirm exact restoration. Repeat the external-conflict recovery
+  checks below; newer color settings must never be overwritten automatically.
 - [ ] Repeat several shorter breaks; they must never combine into a reset.
 - [ ] Wake to the lock screen before the reset interval, wait there, then unlock:
   the awake locked time must not extend the break. Test display timeout and AOD.

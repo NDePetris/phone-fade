@@ -194,14 +194,23 @@ class PhoneFadeCoordinator(
     }
 
     private fun transition(event: SessionEvent, observedAt: Long = clock()) {
+        val previous = checkpoint.session
         val transition = SessionEngine.reduce(checkpoint.session, event, observedAt, checkpoint.config)
         if (transition.state == checkpoint.session && transition.effect == null) return
         checkpoint = checkpoint.copy(session = transition.state, pending = transition.effect ?: checkpoint.pending)
         if (!persistSafely()) return
-        transition.effect?.let { perform(it) }
+        transition.effect?.let { effect ->
+            // A reset is only successful after verified restoration. On failure keep
+            // prior usage, but retain the new screen boundary and stop all counting.
+            val failedReset = if (effect == DisplayEffect.RESTORE && transition.state.enabled)
+                transition.state.copy(hasSession = previous.hasSession, consumedMs = previous.consumedAt(observedAt),
+                    exhausted = previous.exhausted, activeSince = null, resetEarned = false)
+            else null
+            perform(effect, failedReset)
+        }
     }
 
-    private fun perform(effect: DisplayEffect) {
+    private fun perform(effect: DisplayEffect, failedReset: SessionState? = null) {
         val display = controller.status()
         val result = when (effect) {
             DisplayEffect.ENABLE -> if (display.ownsGrayscale) display.copy(operationSucceeded = true) else controller.enable()
@@ -210,7 +219,10 @@ class PhoneFadeCoordinator(
         if (result.operationSucceeded) {
             checkpoint = checkpoint.copy(pending = null)
             persistSafely()
-        } else attention(result.message)
+        } else {
+            if (failedReset != null) checkpoint = checkpoint.copy(session = failedReset)
+            attention(result.message)
+        }
     }
 
     private fun attention(message: String) {

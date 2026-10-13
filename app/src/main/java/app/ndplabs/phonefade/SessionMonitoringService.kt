@@ -34,22 +34,26 @@ class SessionMonitoringService : Service() {
     private var promoted = false
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            // A stale boundary proves an intervening event was missed. Never join two
-            // off intervals or fabricate unlocked use from that unknown gap.
+            val signal = when (intent.action) {
+                Intent.ACTION_SCREEN_OFF -> ScreenSignal.SCREEN_OFF
+                Intent.ACTION_SCREEN_ON -> ScreenSignal.SCREEN_ON
+                Intent.ACTION_USER_PRESENT -> ScreenSignal.USER_PRESENT
+                else -> return
+            }
             val activity = app.activity()
             val observedAt = SystemClock.elapsedRealtime()
-            val missedBoundary = (intent.action == Intent.ACTION_SCREEN_ON && activity == DeviceActivity.OFF) ||
-                (intent.action == Intent.ACTION_SCREEN_OFF && activity != DeviceActivity.OFF)
-            val event = if (missedBoundary) SessionEvent.Recover(activity) else SessionEvent.Observe(activity)
-            app.submit { app.coordinator.event(event, observedAt) }
+            val event = ScreenEventMapper.event(signal, activity)
+            PhoneFadeLog.debug("receiver signal=$signal observed=$activity event=$event at=$observedAt")
+            app.submit("receiver:$signal") { app.coordinator.event(event, observedAt) }
         }
     }
     private val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
-        override fun onChange(selfChange: Boolean) { app.submit { app.coordinator.inspectDisplay() } }
+        override fun onChange(selfChange: Boolean) { app.submit("display observer") { app.coordinator.inspectDisplay() } }
     }
 
     override fun onCreate() {
         super.onCreate()
+        PhoneFadeLog.debug("service onCreate")
         try {
             val notification = MonitoringNotification.create(this, "Starting monitoring…")
             if (Build.VERSION.SDK_INT >= 34) startForeground(MonitoringNotification.ID, notification,
@@ -59,45 +63,71 @@ class SessionMonitoringService : Service() {
             val filter = IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT)
             }
-            if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            // USER_PRESENT is sent by SystemUI's separate UID, not system_server.
+            // All three actions are protected broadcasts; ordinary apps cannot spoof them.
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
             else registerReceiver(receiver, filter)
             registered = true
+            PhoneFadeLog.debug("receiver registered SCREEN_OFF SCREEN_ON USER_PRESENT exported=true")
             for (key in listOf(GrayscaleController.ENABLED, GrayscaleController.MODE)) {
                 contentResolver.registerContentObserver(Settings.Secure.getUriFor(key), false, observer)
             }
         } catch (error: Exception) {
-            app.submit { app.coordinator.startupFailed(error.message ?: error.javaClass.simpleName) }
+            PhoneFadeLog.debug("service startup failure type=${error.javaClass.simpleName}")
+            app.submit("startupFailed") { app.coordinator.startupFailed(error.message ?: error.javaClass.simpleName) }
             stopSelf()
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        PhoneFadeLog.debug("service onStartCommand startId=$startId explicit=${intent?.action == START} promoted=$promoted")
         if (!promoted) return START_NOT_STICKY
         scope.launch {
             if (!app.startMonitoring(intent?.action == START, intent?.getLongExtra(REQUEST, -1))) {
+                PhoneFadeLog.debug("service start rejected startId=$startId")
                 if (stopSelfResult(startId)) stopForeground(STOP_FOREGROUND_REMOVE)
                 return@launch
             }
             if (collector == null) collector = scope.launch {
+                PhoneFadeLog.debug("notification collector started")
                 app.coordinator.state.collect { state ->
+                    PhoneFadeLog.state("notification update", state)
                     timer?.cancel()
                     if (!state.running) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return@collect }
-                    val notification = MonitoringNotification.create(this@SessionMonitoringService,
-                        MonitoringNotification.text(state, SystemClock.elapsedRealtime()))
+                    val text = MonitoringNotification.text(state, SystemClock.elapsedRealtime())
+                    val notification = MonitoringNotification.create(this@SessionMonitoringService, text)
                     // startForeground remains legal when notification permission is denied.
                     startForeground(MonitoringNotification.ID, notification)
+                    PhoneFadeLog.debug("notification published generation=${state.checkpoint.session.generation} text=$text")
                     val cp = state.checkpoint
                     val deadline = cp.session.deadline(cp.config)
                     if (deadline != null && cp.attention == null) timer = scope.launch {
                         // Minute checkpoints also refresh presentation; the absolute deadline controls correctness.
                         val wait = minOf(60_000L, (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0))
+                        PhoneFadeLog.debug("timer scheduled generation=${cp.session.generation} waitMs=$wait")
                         delay(wait)
                         val activity = app.activity()
                         val observedAt = SystemClock.elapsedRealtime()
-                        app.submit {
+                        app.submit("timer") {
                             if (app.coordinator.state.value.checkpoint.session.generation == cp.session.generation) {
                                 if (activity != cp.session.activity) app.coordinator.event(SessionEvent.Observe(activity), observedAt)
                                 else app.coordinator.event(SessionEvent.Deadline(cp.session.generation), observedAt)
+                            }
+                        }
+                    }
+                    else if (cp.session.activity == DeviceActivity.LOCKED && cp.attention == null) timer = scope.launch {
+                        // USER_PRESENT is the primary unlock signal. Reconcile while
+                        // locked too, including exhausted sessions with no deadline.
+                        while (true) {
+                            delay(1000L)
+                            val activity = app.activity()
+                            if (activity != DeviceActivity.LOCKED) {
+                                val observedAt = SystemClock.elapsedRealtime()
+                                app.submit("locked reconciliation") {
+                                    if (app.coordinator.state.value.checkpoint.session.generation == cp.session.generation)
+                                        app.coordinator.event(SessionEvent.Observe(activity), observedAt)
+                                }
+                                break
                             }
                         }
                     }
@@ -108,10 +138,11 @@ class SessionMonitoringService : Service() {
     }
 
     override fun onDestroy() {
+        PhoneFadeLog.debug("service onDestroy registered=$registered")
         if (registered) unregisterReceiver(receiver)
         contentResolver.unregisterContentObserver(observer)
         scope.cancel()
-        app.submit { app.coordinator.serviceGone() }
+        app.submit("serviceGone") { app.coordinator.serviceGone() }
         super.onDestroy()
     }
     override fun onBind(intent: Intent?): IBinder? = null

@@ -52,13 +52,13 @@ object SessionEngine {
             return reduce(SessionState(enabled = true, generation = old.generation + 1), SessionEvent.Observe(event.activity), now, config)
         }
         if (!old.enabled) return SessionTransition(old)
+        if (now < old.observedAt) return SessionTransition(old) // obsolete observation
         if (event is SessionEvent.Recover) {
             // Never infer unlocked use or a continuous break during process downtime.
             val recovered = old.copy(activeSince = null, breakSince = null, activity = DeviceActivity.LOCKED,
                 observedAt = now, generation = old.generation + 1)
             return reduce(recovered, SessionEvent.Observe(event.activity), now, config)
         }
-        if (now < old.observedAt) return SessionTransition(old) // obsolete observation
         var state = old.copy(consumedMs = old.consumedAt(now), activeSince = null,
             observedAt = now, generation = old.generation + 1)
         var effect: DisplayEffect? = null
@@ -70,8 +70,13 @@ object SessionEngine {
             }
             if (activity == DeviceActivity.OFF && old.activity != DeviceActivity.OFF) state = state.copy(breakSince = now)
             state = state.copy(activity = activity)
-            if (activity == DeviceActivity.UNLOCKED && (!state.hasSession || state.resetEarned)) {
-                if (state.resetEarned) effect = DisplayEffect.RESTORE
+            // Wake ends the continuous break and restores color even behind keyguard.
+            // Also consume earned resets from checkpoints written by the prior version.
+            if (activity != DeviceActivity.OFF && state.resetEarned) {
+                effect = DisplayEffect.RESTORE
+                state = state.copy(hasSession = true, consumedMs = 0, exhausted = false, resetEarned = false)
+            }
+            if (activity == DeviceActivity.UNLOCKED && !state.hasSession) {
                 state = state.copy(hasSession = true, consumedMs = 0, exhausted = false, resetEarned = false)
             }
         }

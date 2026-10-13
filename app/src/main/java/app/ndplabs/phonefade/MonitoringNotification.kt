@@ -33,7 +33,9 @@ object MonitoringNotification {
         if (!state.running) return if (cp.session.enabled) "Monitoring interrupted — enable to resume" else "Monitoring stopped"
         val display = if (state.display.ownsGrayscale) "Grayscale active" else if (cp.session.exhausted) "Grayscale pending unlock"
         else "Color: ${(cp.session.remaining(cp.config, now) + 59_999) / 60_000} minutes remaining"
-        val pause = if (cp.session.activity != DeviceActivity.UNLOCKED) "Paused — $display" else display
+        val pause = if (cp.session.activity == DeviceActivity.LOCKED && !cp.session.exhausted)
+            "$display · waiting for unlock"
+        else if (cp.session.activity != DeviceActivity.UNLOCKED) "Paused — $display" else display
         return if (cp.interrupted) "$pause · recovered after interruption" else pause
     }
 }

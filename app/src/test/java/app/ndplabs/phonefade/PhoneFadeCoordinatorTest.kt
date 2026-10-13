@@ -47,6 +47,141 @@ class PhoneFadeCoordinatorTest {
         c.event(SessionEvent.Observe(DeviceActivity.UNLOCKED)); assertEquals(ColorSettings("0", "12"), current); assertNull(original)
         assertFalse(c.state.value.checkpoint.session.exhausted)
     }
+    @Test fun pixelLongBreakAndUnlockWithLaggingKeyguardRestoresAndUnpauses() {
+        val c = coordinator(); c.start(DeviceActivity.UNLOCKED, true); expire(c)
+        c.event(ScreenEventMapper.event(ScreenSignal.SCREEN_OFF, DeviceActivity.OFF))
+        now += 90_001
+        c.event(ScreenEventMapper.event(ScreenSignal.SCREEN_ON, DeviceActivity.LOCKED))
+        assertFalse(saved.session.resetEarned); assertNull(saved.session.breakSince)
+        assertNull(saved.session.deadline(saved.config))
+        assertFalse(c.state.value.display.ownsGrayscale)
+        assertEquals(ColorSettings("0", "12"), current); assertNull(original)
+        assertEquals("Color: 1 minutes remaining · waiting for unlock", MonitoringNotification.text(c.state.value, now))
+        now += 120_000
+        assertEquals(60_000L, saved.session.remaining(saved.config, now))
+        c.event(ScreenEventMapper.event(ScreenSignal.USER_PRESENT, DeviceActivity.LOCKED))
+        assertEquals(DeviceActivity.UNLOCKED, saved.session.activity)
+        assertFalse(saved.session.resetEarned); assertFalse(saved.session.exhausted)
+        assertEquals(60_000L, saved.session.remaining(saved.config, now))
+        assertEquals(now, saved.session.activeSince)
+        assertEquals(ColorSettings("0", "12"), current); assertNull(original)
+        assertNull(saved.pending); assertNull(saved.attention)
+        assertEquals("Color: 1 minutes remaining", MonitoringNotification.text(c.state.value, now))
+        val count = writes
+        now += 100
+        c.event(ScreenEventMapper.event(ScreenSignal.USER_PRESENT, DeviceActivity.LOCKED))
+        assertEquals(count, writes); assertEquals(100L, saved.session.consumedMs)
+    }
+    @Test fun shortBreakUnlockWithLaggingKeyguardKeepsOwnershipAndUnpauses() {
+        val c = coordinator(); c.start(DeviceActivity.UNLOCKED, true); expire(c)
+        val count = writes
+        c.event(ScreenEventMapper.event(ScreenSignal.SCREEN_OFF, DeviceActivity.OFF)); now += 1000
+        c.event(ScreenEventMapper.event(ScreenSignal.SCREEN_ON, DeviceActivity.LOCKED))
+        c.event(ScreenEventMapper.event(ScreenSignal.USER_PRESENT, DeviceActivity.LOCKED))
+        assertEquals(DeviceActivity.UNLOCKED, saved.session.activity)
+        assertFalse(saved.session.resetEarned); assertTrue(saved.session.exhausted)
+        assertEquals(count, writes); assertEquals(ColorSettings("0", "12"), original)
+        assertEquals("Grayscale active", MonitoringNotification.text(c.state.value, now))
+    }
+    @Test fun delayedUserPresentWhileOffPreservesBreakUntilRealUnlock() {
+        val c = coordinator(); c.start(DeviceActivity.UNLOCKED, true); expire(c)
+        c.event(ScreenEventMapper.event(ScreenSignal.SCREEN_OFF, DeviceActivity.OFF))
+        val breakSince = saved.session.breakSince
+        now += 90_001
+        val count = writes
+        c.event(ScreenEventMapper.event(ScreenSignal.USER_PRESENT, DeviceActivity.OFF))
+        assertEquals(DeviceActivity.OFF, saved.session.activity)
+        assertEquals(breakSince, saved.session.breakSince); assertEquals(count, writes)
+        c.event(ScreenEventMapper.event(ScreenSignal.SCREEN_ON, DeviceActivity.LOCKED))
+        c.event(ScreenEventMapper.event(ScreenSignal.USER_PRESENT, DeviceActivity.LOCKED))
+        assertEquals(ColorSettings("0", "12"), current); assertNull(original)
+    }
+    @Test fun qualifyingWakeWithoutKeyguardRestoresAndStartsFullAllowance() {
+        val c = coordinator(); c.start(DeviceActivity.UNLOCKED, true); expire(c)
+        c.event(ScreenEventMapper.event(ScreenSignal.SCREEN_OFF, DeviceActivity.OFF)); now += 60_000
+        c.event(ScreenEventMapper.event(ScreenSignal.SCREEN_ON, DeviceActivity.UNLOCKED))
+        assertNull(original); assertEquals(ColorSettings("0", "12"), current)
+        assertEquals(now, saved.session.activeSince); assertEquals(60_000L, saved.session.remaining(saved.config, now))
+        val count = writes; now += 500
+        c.event(ScreenEventMapper.event(ScreenSignal.USER_PRESENT, DeviceActivity.UNLOCKED))
+        assertEquals(count, writes); assertEquals(500L, saved.session.consumedMs)
+    }
+    @Test fun unlockedReconciliationResumesFreshAllowanceWithoutUserPresent() {
+        val c = coordinator(); c.start(DeviceActivity.UNLOCKED, true); expire(c)
+        c.event(SessionEvent.Observe(DeviceActivity.OFF)); now += 60_000
+        c.event(SessionEvent.Observe(DeviceActivity.LOCKED)); now += 90_000
+        c.event(SessionEvent.Observe(DeviceActivity.UNLOCKED))
+        assertEquals(0L, saved.session.consumedMs); assertEquals(now, saved.session.activeSince)
+        assertEquals(60_000L, saved.session.remaining(saved.config, now)); assertNull(saved.attention)
+    }
+    @Test fun shortWakeRetainsPartialUsageThroughLongKeyguardWait() {
+        val c = coordinator(); c.start(DeviceActivity.UNLOCKED, true); now = 20_000
+        c.event(SessionEvent.Observe(DeviceActivity.OFF)); now += 20_000
+        c.event(SessionEvent.Observe(DeviceActivity.LOCKED)); now += 120_000
+        assertEquals(40_000L, saved.session.remaining(saved.config, now))
+        c.event(SessionEvent.Observe(DeviceActivity.UNLOCKED))
+        assertEquals(20_000L, saved.session.consumedMs); assertEquals(0, writes)
+    }
+    @Test fun repeatedShortLockScreenWakesPreserveGrayscaleAndUsage() {
+        val c = coordinator(); c.start(DeviceActivity.UNLOCKED, true); expire(c); val count = writes
+        repeat(5) {
+            c.event(SessionEvent.Observe(DeviceActivity.OFF)); now += 40_000
+            c.event(SessionEvent.Observe(DeviceActivity.LOCKED)); now += 90_000
+            assertTrue(saved.session.exhausted); assertEquals(60_000L, saved.session.consumedMs)
+            assertNull(saved.session.breakSince); assertNull(saved.session.activeSince)
+            assertEquals("Paused — Grayscale active", MonitoringNotification.text(c.state.value, now))
+        }
+        assertEquals(count, writes); assertEquals(ColorSettings("0", "12"), original)
+    }
+    @Test fun duplicateWakeAndDelayedEventsDoNotRepeatResetOrChargeLockedTime() {
+        val c = coordinator(); c.start(DeviceActivity.UNLOCKED, true); expire(c)
+        c.event(SessionEvent.Observe(DeviceActivity.OFF)); now += 60_000
+        c.event(SessionEvent.Observe(DeviceActivity.LOCKED)); val wake = now; val count = writes
+        now += 30_000; c.event(SessionEvent.Observe(DeviceActivity.LOCKED))
+        assertEquals(0L, saved.session.consumedMs); assertEquals(count, writes)
+        c.event(SessionEvent.Observe(DeviceActivity.UNLOCKED)); now += 1000
+        c.event(SessionEvent.Observe(DeviceActivity.UNLOCKED))
+        c.event(SessionEvent.Observe(DeviceActivity.LOCKED), wake)
+        c.event(SessionEvent.Recover(DeviceActivity.OFF), wake)
+        assertEquals(1000L, saved.session.consumedMs); assertEquals(DeviceActivity.UNLOCKED, saved.session.activity)
+        assertEquals(count, writes)
+    }
+    @Test fun lockedWakeRestoreWriteFailureRetainsSnapshotAndPreviousSession() {
+        val c = coordinator(); c.start(DeviceActivity.UNLOCKED, true); expire(c)
+        c.event(SessionEvent.Observe(DeviceActivity.OFF)); now += 60_000; writeFailed = true
+        c.event(SessionEvent.Observe(DeviceActivity.LOCKED))
+        assertEquals(ColorSettings("0", "12"), original); assertTrue(saved.session.exhausted)
+        assertEquals(60_000L, saved.session.consumedMs); assertFalse(saved.session.resetEarned)
+        assertNull(saved.session.activeSince); assertEquals(DisplayEffect.RESTORE, saved.pending)
+        assertNotNull(saved.attention)
+        assertEquals("Attention required — open Phone Fade", MonitoringNotification.text(c.state.value, now))
+        val count = writes; now += 90_000; c.event(SessionEvent.Observe(DeviceActivity.UNLOCKED))
+        assertEquals(count, writes); writeFailed = false; c.disable(); assertNull(original)
+    }
+    @Test fun lockedWakeRestoreProtectsExternalConflict() {
+        val c = coordinator(); c.start(DeviceActivity.UNLOCKED, true); expire(c)
+        c.event(SessionEvent.Observe(DeviceActivity.OFF)); now += 60_000
+        current = ColorSettings("1", "11"); val count = writes
+        c.event(SessionEvent.Observe(DeviceActivity.LOCKED))
+        assertEquals(count, writes); assertEquals(ColorSettings("1", "11"), current)
+        assertNotNull(original); assertNotNull(saved.attention); assertTrue(saved.session.exhausted)
+    }
+    @Test fun lockedWakeStorageFailurePreventsRestoreAndRetainsJournal() {
+        val c = coordinator(); c.start(DeviceActivity.UNLOCKED, true); expire(c)
+        c.event(SessionEvent.Observe(DeviceActivity.OFF)); now += 60_000; diskFailed = true; val count = writes
+        c.event(SessionEvent.Observe(DeviceActivity.LOCKED))
+        assertEquals(count, writes); assertNotNull(original); assertFalse(c.state.value.running)
+        assertNotNull(c.state.value.checkpoint.attention); assertTrue(saved.session.exhausted)
+    }
+    @Test fun freshLockedAllowanceSurvivesProcessRecoveryWithoutChargingGap() {
+        val c = coordinator(); c.start(DeviceActivity.UNLOCKED, true); expire(c)
+        c.event(SessionEvent.Observe(DeviceActivity.OFF)); now += 60_000
+        c.event(SessionEvent.Observe(DeviceActivity.LOCKED)); c.serviceGone(); now += 90_000
+        val recovered = coordinator(); assertTrue(recovered.start(DeviceActivity.LOCKED, false))
+        assertEquals(60_000L, saved.session.remaining(saved.config, now)); assertNull(saved.session.activeSince)
+        recovered.event(SessionEvent.Observe(DeviceActivity.UNLOCKED))
+        assertEquals(0L, saved.session.consumedMs); assertEquals(now, saved.session.activeSince)
+    }
     @Test fun recoveryPreservesConfirmedUsageWithoutChargingGap() {
         val c = coordinator(); c.start(DeviceActivity.UNLOCKED, true); now = 1000
         c.event(SessionEvent.Observe(DeviceActivity.UNLOCKED)); now = 900_000
@@ -174,6 +309,8 @@ class PhoneFadeCoordinatorTest {
         c.event(SessionEvent.Observe(DeviceActivity.OFF)); now += 60_000; permission = false
         c.event(SessionEvent.Observe(DeviceActivity.UNLOCKED))
         assertNotNull(c.state.value.checkpoint.attention); assertTrue(c.state.value.display.ownsGrayscale)
+        assertTrue(saved.session.exhausted); assertEquals(60_000L, saved.session.consumedMs)
+        assertNull(saved.session.activeSince); assertFalse(saved.session.resetEarned)
         val count = writes; now += 100_000; c.event(SessionEvent.Deadline(saved.session.generation)); assertEquals(count, writes)
     }
     @Test fun explicitResumeAfterInterruptionPreservesConfirmedUsage() {
