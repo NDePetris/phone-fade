@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Android build, tests, and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+        with:
+          log-accepted-android-sdk-licenses: 'false'
+
+      - name: Install pinned Android SDK components
+        shell: bash
+        run: |
+          sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build, unit tests, and lint
+        shell: bash
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug testDebugUnitTest testReleaseUnitTest check lintDebug lintRelease --no-watch-fs --console=plain
+
+      - name: Check APK has no Internet permission
+        shell: bash
+        run: |
+          permissions="$("$ANDROID_HOME/build-tools/35.0.0/aapt2" dump permissions app/build/outputs/apk/debug/app-debug.apk)"
+          printf '%s\n' "$permissions"
+          if grep -Fq 'android.permission.INTERNET' <<< "$permissions"; then
+            echo '::error::Unexpected INTERNET permission in the packaged APK'
+            exit 1
+          fi
