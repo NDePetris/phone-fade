@@ -24,7 +24,10 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+
+        with:
+          log-accepted-android-sdk-licenses: 'false'
 
       - name: Install pinned Android SDK components
         shell: bash
