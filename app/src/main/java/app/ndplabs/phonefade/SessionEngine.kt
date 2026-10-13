@@ -1,13 +1,20 @@
 package app.ndplabs.phonefade
 
-data class MonitoringConfig(val allowanceMinutes: Int = 10, val resetMinutes: Int = 5) {
-    init { require(allowanceMinutes in 1..120 && resetMinutes in 1..120) }
+data class MonitoringConfig(val allowanceMinutes: Int = 10, val resetMinutes: Int = 5, val temporaryMinutes: Int = 5) {
+    init { require(allowanceMinutes in 1..120 && resetMinutes in 1..120 && temporaryMinutes in 1..120) }
     val allowanceMs get() = allowanceMinutes * 60_000L
     val resetMs get() = resetMinutes * 60_000L
+    val temporaryMs get() = temporaryMinutes * 60_000L
 }
 
 enum class DeviceActivity { OFF, LOCKED, UNLOCKED }
 enum class DisplayEffect { ENABLE, RESTORE }
+enum class OperationPurpose { ACTIVATE, RESET, DISABLE, TEMPORARY_COLOR, REACTIVATE }
+
+data class TemporaryColorState(val durationMs: Long, val consumedMs: Long = 0, val activeSince: Long? = null) {
+    fun consumedAt(now: Long) = consumedMs + (activeSince?.let { (now - it).coerceAtLeast(0) } ?: 0)
+    fun remaining(now: Long) = (durationMs - consumedAt(now)).coerceAtLeast(0)
+}
 
 data class SessionState(
     val enabled: Boolean = false,
@@ -20,12 +27,16 @@ data class SessionState(
     val resetEarned: Boolean = false,
     val generation: Long = 0,
     val observedAt: Long = 0,
+    val temporary: TemporaryColorState? = null,
 ) {
-    fun consumedAt(now: Long): Long = consumedMs + (activeSince?.let { (now - it).coerceAtLeast(0) } ?: 0)
+    fun consumedAt(now: Long): Long = consumedMs + (activeSince?.takeIf { temporary == null }?.let { (now - it).coerceAtLeast(0) } ?: 0)
     fun remaining(config: MonitoringConfig, now: Long): Long =
         if (exhausted) 0 else (config.allowanceMs - consumedAt(now)).coerceAtLeast(0)
-    fun deadline(config: MonitoringConfig): Long? =
-        if (enabled && !exhausted && activeSince != null) activeSince + (config.allowanceMs - consumedMs).coerceAtLeast(0) else null
+    fun deadline(config: MonitoringConfig): Long? {
+        if (!enabled) return null
+        temporary?.let { return it.activeSince?.let { anchor -> anchor + (it.durationMs - it.consumedMs).coerceAtLeast(0) } }
+        return if (!exhausted && activeSince != null) activeSince + (config.allowanceMs - consumedMs).coerceAtLeast(0) else null
+    }
 }
 
 sealed interface SessionEvent {
@@ -35,9 +46,11 @@ sealed interface SessionEvent {
     data class Deadline(val generation: Long) : SessionEvent
     data object ConfigurationChanged : SessionEvent
     data class Recover(val activity: DeviceActivity) : SessionEvent
+    data object RequestTemporaryColor : SessionEvent
 }
 
-data class SessionTransition(val state: SessionState, val effect: DisplayEffect? = null)
+data class SessionTransition(val state: SessionState, val effect: DisplayEffect? = null,
+    val purpose: OperationPurpose? = null)
 
 /** Android-free reducer. Timestamps are supplied by one monotonic clock. */
 object SessionEngine {
@@ -45,7 +58,7 @@ object SessionEngine {
         require(now >= 0)
         if (event is SessionEvent.Deadline && event.generation != old.generation) return SessionTransition(old)
         if (event == SessionEvent.Disable) return SessionTransition(
-            SessionState(generation = old.generation + 1, observedAt = now), DisplayEffect.RESTORE,
+            SessionState(generation = old.generation + 1, observedAt = now), DisplayEffect.RESTORE, OperationPurpose.DISABLE,
         )
         if (event is SessionEvent.Enable) {
             if (old.enabled) return SessionTransition(old)
@@ -56,12 +69,20 @@ object SessionEngine {
         if (event is SessionEvent.Recover) {
             // Never infer unlocked use or a continuous break during process downtime.
             val recovered = old.copy(activeSince = null, breakSince = null, activity = DeviceActivity.LOCKED,
+                temporary = old.temporary?.copy(activeSince = null),
                 observedAt = now, generation = old.generation + 1)
             return reduce(recovered, SessionEvent.Observe(event.activity), now, config)
         }
         var state = old.copy(consumedMs = old.consumedAt(now), activeSince = null,
+            temporary = old.temporary?.let { it.copy(consumedMs = it.consumedAt(now), activeSince = null) },
             observedAt = now, generation = old.generation + 1)
         var effect: DisplayEffect? = null
+        var purpose: OperationPurpose? = null
+        if (event == SessionEvent.RequestTemporaryColor) {
+            if (!old.exhausted || old.temporary != null || old.activity != DeviceActivity.UNLOCKED) return SessionTransition(old)
+            return SessionTransition(state.copy(temporary = TemporaryColorState(config.temporaryMs)),
+                DisplayEffect.RESTORE, OperationPurpose.TEMPORARY_COLOR)
+        }
         if (event is SessionEvent.Observe) {
             val activity = event.activity
             if (old.activity == DeviceActivity.OFF && activity != DeviceActivity.OFF) {
@@ -74,7 +95,8 @@ object SessionEngine {
             // Also consume earned resets from checkpoints written by the prior version.
             if (activity != DeviceActivity.OFF && state.resetEarned) {
                 effect = DisplayEffect.RESTORE
-                state = state.copy(hasSession = true, consumedMs = 0, exhausted = false, resetEarned = false)
+                purpose = OperationPurpose.RESET
+                state = state.copy(hasSession = true, consumedMs = 0, exhausted = false, resetEarned = false, temporary = null)
             }
             if (activity == DeviceActivity.UNLOCKED && !state.hasSession) {
                 state = state.copy(hasSession = true, consumedMs = 0, exhausted = false, resetEarned = false)
@@ -82,9 +104,21 @@ object SessionEngine {
         }
         if (state.hasSession && !state.exhausted && state.consumedMs >= config.allowanceMs) state = state.copy(exhausted = true)
         if (state.activity == DeviceActivity.UNLOCKED && state.hasSession) {
-            state = state.copy(activeSince = now)
-            if (state.exhausted && (!old.exhausted || old.activity != DeviceActivity.UNLOCKED)) effect = DisplayEffect.ENABLE
+            val temporary = state.temporary
+            if (temporary != null) {
+                if (temporary.remaining(now) == 0L) {
+                    state = state.copy(temporary = null)
+                    effect = DisplayEffect.ENABLE
+                    purpose = OperationPurpose.REACTIVATE
+                } else state = state.copy(temporary = temporary.copy(activeSince = now))
+            } else {
+                state = state.copy(activeSince = now)
+                if (state.exhausted && (!old.exhausted || old.activity != DeviceActivity.UNLOCKED)) {
+                    effect = DisplayEffect.ENABLE
+                    purpose = OperationPurpose.ACTIVATE
+                }
+            }
         }
-        return SessionTransition(state, effect)
+        return SessionTransition(state, effect, purpose)
     }
 }

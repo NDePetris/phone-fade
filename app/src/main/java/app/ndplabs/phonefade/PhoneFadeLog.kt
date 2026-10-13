@@ -17,6 +17,8 @@ internal object PhoneFadeLog {
             "generation=${session.generation} exhausted=${session.exhausted} " +
             "resetEarned=${session.resetEarned} breakSince=${session.breakSince} " +
             "activeSince=${session.activeSince} observedAt=${session.observedAt} " +
+            "temporary=${session.temporary != null} temporaryConsumed=${session.temporary?.consumedMs} " +
+            "temporaryActiveSince=${session.temporary?.activeSince} purpose=${cp.pendingPurpose} " +
             "ownsGrayscale=${state.display.ownsGrayscale} pending=${cp.pending} " +
             "attention=${cp.attention != null} interrupted=${cp.interrupted}")
     }

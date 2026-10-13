@@ -6,7 +6,8 @@ import org.junit.Test
 class MonitoringStoreTest {
     @Test fun roundTripAllFields() {
         val value = MonitoringCheckpoint(MonitoringConfig(2, 3), SessionState(true, true, 20, true,
-            DeviceActivity.OFF, null, 100, true, 4, 100), 9, DisplayEffect.RESTORE, "Attention", true)
+            DeviceActivity.OFF, null, 100, true, 4, 100), 9, DisplayEffect.RESTORE, "Attention", true,
+            OperationPurpose.RESET, SessionState())
         assertEquals(value, CheckpointCodec.decode(CheckpointCodec.encode(value)))
     }
     @Test fun failedCommitRetainsConfirmedValueEvenIfMemoryChanged() {

@@ -21,7 +21,7 @@ System color correction uses privileged `WRITE_SECURE_SETTINGS` development acce
 - Do not clear app data, uninstall, revoke the grant, or exercise destructive ADB recovery steps against a user's active grayscale state without protecting the external settings snapshot and obtaining explicit approval.
 
 ## Repository status
-The default branch contains the initial manual grayscale capability. Automatic session monitoring is developed separately on `feat/automatic-session-monitoring`; branch presence and automated test results do **not** mean it is merged or fully device validated. Read the branch's `README.md` and `VALIDATION.md` when working on monitoring.
+PR 1 manual grayscale and PR 2 automatic session monitoring are merged into `main`. PR 2 was merged as GitHub PR #3 (`69b3fdb`) on October 13, 2026; GitHub PR #2 was the engineering harness. Core Pixel 9 Pro behavior was reported validated in the merged PR, but not every interruption/recovery case. Read `README.md` and `VALIDATION.md` for the distinction between historical evidence and new feature acceptance. PR 3 temporary color and everyday experience require their own physical acceptance; passing automated tests is not physical validation.
 
 Do not silently elevate feature status, change permission requirements, or claim successful physical acceptance based on simulations. Future code and branch state must be rechecked rather than inferred from this note.
 
