@@ -32,9 +32,17 @@ class SessionMonitoringService : Service() {
     private var collector: Job? = null
     private var registered = false
     private var promoted = false
-    private var lastNotificationText: String? = null
+    private var lastNotification: NotificationPresentation? = null
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == Intent.ACTION_TIME_CHANGED) {
+                // Notification.when is an epoch projection. Rebuild that projection
+                // after a wall-clock change without changing any elapsed-time anchors.
+                lastNotification = null
+                val state = app.coordinator.state.value
+                if (state.running) publishNotification(state)
+                return
+            }
             val signal = when (intent.action) {
                 Intent.ACTION_SCREEN_OFF -> ScreenSignal.SCREEN_OFF
                 Intent.ACTION_SCREEN_ON -> ScreenSignal.SCREEN_ON
@@ -56,20 +64,21 @@ class SessionMonitoringService : Service() {
         super.onCreate()
         PhoneFadeLog.debug("service onCreate")
         try {
-            val notification = MonitoringNotification.create(this, "Starting monitoring…")
+            val notification = MonitoringNotification.create(this, NotificationPresentation("Starting monitoring…"))
             if (Build.VERSION.SDK_INT >= 34) startForeground(MonitoringNotification.ID, notification,
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             else startForeground(MonitoringNotification.ID, notification)
             promoted = true
             val filter = IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT)
+                addAction(Intent.ACTION_TIME_CHANGED)
             }
             // USER_PRESENT is sent by SystemUI's separate UID, not system_server.
-            // All three actions are protected broadcasts; ordinary apps cannot spoof them.
+            // All four actions are protected broadcasts; ordinary apps cannot spoof them.
             if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
             else registerReceiver(receiver, filter)
             registered = true
-            PhoneFadeLog.debug("receiver registered SCREEN_OFF SCREEN_ON USER_PRESENT exported=true")
+            PhoneFadeLog.debug("receiver registered SCREEN_OFF SCREEN_ON USER_PRESENT TIME_SET exported=true")
             for (key in listOf(GrayscaleController.ENABLED, GrayscaleController.MODE)) {
                 contentResolver.registerContentObserver(Settings.Secure.getUriFor(key), false, observer)
             }
@@ -95,19 +104,13 @@ class SessionMonitoringService : Service() {
                     PhoneFadeLog.state("notification update", state)
                     timer?.cancel()
                     if (!state.running) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return@collect }
-                    val text = MonitoringNotification.text(state, SystemClock.elapsedRealtime())
-                    if (text != lastNotificationText) {
-                        val notification = MonitoringNotification.create(this@SessionMonitoringService, text)
-                        // startForeground remains legal when notification permission is denied.
-                        startForeground(MonitoringNotification.ID, notification)
-                        lastNotificationText = text
-                    }
-                    PhoneFadeLog.debug("notification published generation=${state.checkpoint.session.generation} text=$text")
+                    publishNotification(state)
                     val cp = state.checkpoint
                     val deadline = cp.session.deadline(cp.config)
                     if (deadline != null && cp.attention == null) timer = scope.launch {
-                        // Minute checkpoints also refresh presentation; the absolute deadline controls correctness.
-                        val wait = minOf(60_000L, (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0))
+                        // Minute checkpoints and one final-minute boundary refresh presentation;
+                        // the absolute monotonic deadline controls correctness, never chronometer ticks.
+                        val wait = NotificationCountdown.nextWakeDelay(deadline, SystemClock.elapsedRealtime())
                         PhoneFadeLog.debug("timer scheduled generation=${cp.session.generation} waitMs=$wait")
                         delay(wait)
                         val activity = app.activity()
@@ -143,11 +146,23 @@ class SessionMonitoringService : Service() {
 
     override fun onDestroy() {
         PhoneFadeLog.debug("service onDestroy registered=$registered")
+        if (promoted) stopForeground(STOP_FOREGROUND_REMOVE)
         if (registered) unregisterReceiver(receiver)
         contentResolver.unregisterContentObserver(observer)
         scope.cancel()
         app.submit("serviceGone") { app.coordinator.serviceGone() }
         super.onDestroy()
+    }
+    private fun publishNotification(state: MonitoringState) {
+        val presentation = NotificationCountdown.presentation(state, SystemClock.elapsedRealtime())
+        if (presentation != lastNotification) {
+            val notification = MonitoringNotification.create(this, presentation)
+            // startForeground remains legal when notification permission is denied.
+            startForeground(MonitoringNotification.ID, notification)
+            lastNotification = presentation
+            PhoneFadeLog.debug("notification published generation=${state.checkpoint.session.generation} " +
+                "text=${presentation.text} countdownDeadline=${presentation.deadlineElapsed}")
+        }
     }
     override fun onBind(intent: Intent?): IBinder? = null
 }

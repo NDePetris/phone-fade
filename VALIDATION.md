@@ -1,5 +1,97 @@
 # Offramp Fade validation
 
+## PR 3 Pixel acceptance report and notification follow-up — October 13, 2026
+
+### User-reported physical evidence
+
+The user reports that **core temporary-color functionality and visual acceptance
+passed on Pixel 9 Pro**. This is user-provided evidence, not testing executed or
+independently observed by the agent. Exact Android OS/build, tested commit,
+individual logs and test timestamps were not supplied, so none are inferred.
+The reported remaining UX issue was coarse notification copy (“Less than a minute
+remaining”) instead of seconds below one minute. These acceptance results apply
+to the prior implementation, not the native countdown follow-up below.
+
+**Four recovery/safety scenarios were explicitly not physically tested:**
+
+1. Disabling monitoring during temporary color leaves original display settings
+   restored.
+2. App recreation and reopening preserve override state.
+3. External Android color-correction changes are handled safely.
+4. Service interruption, force-stop, and reboot follow documented recovery behavior.
+
+All four remain **pending physical acceptance**. Automated failure-path coverage
+is separate evidence and does not mark them passed. The expanded README reference
+checklist is not a blanket assertion of every subcase passing.
+
+### Notification implementation and tradeoffs
+
+The standard Notification.Builder chronometer supplies system-managed seconds
+only during the final minute of active unlocked ordinary allowance or temporary
+color. Paused/locked states show a fixed seconds remainder without a chronometer.
+Resume derives a new deadline from confirmed usage. Publication identity includes
+the elapsed deadline, so resume/configuration changes update a timer even when its
+label is unchanged; native ticks cause no app-side notification rebuilds.
+
+The single existing service timer adds one final-minute boundary to existing
+minute checkpoints and logical expiry; there is no per-second polling fallback.
+Native seconds are rounded up for display with a 999 ms projection offset, without
+moving the engine deadline. Protected TIME_SET refreshes the epoch projection
+on a wall-clock change, leaving monotonic session/recovery state untouched.
+Pending effects, expired deadlines, missing/uncertain display compatibility,
+attention, startup and known stopped states suppress the native timer. A recovered
+session can resume a new reliable anchor while retaining its interruption label.
+A delivered service-destruction callback removes the foreground notification.
+
+Android controls chronometer placement/format. It has no automatic clamp at zero,
+no remote tick callback into our service, and no way to detect an abrupt process
+termination on the app's behalf. Delayed expiry publication can briefly leave a
+zero or negative overdue display. Body/expanded copy identifies a **scheduled**
+countdown and does not claim physical grayscale or uninterrupted execution. An
+unobserved stop cannot guarantee immediate notice removal, and app-side polling
+would not solve process death either. No custom RemoteViews, timeout cancellation,
+exact alarm, wake lock, new permission, UI redesign, icon change, or recovery
+architecture change was introduced.
+
+Sources reviewed:
+
+- [Notification.Builder native chronometer API](https://developer.android.com/reference/android/app/Notification.Builder#setUsesChronometer(boolean))
+- [AOSP Chronometer: elapsed base, tick visibility, and negative durations](https://android.googlesource.com/platform/frameworks/base/+/HEAD/core/java/android/widget/Chronometer.java)
+
+### Automated and new physical validation
+
+Base implementation commit: `409b7a1`, on
+`feat/offramp-fade-everyday-experience`. With the repository's JDK 17, pinned
+wrapper, SDK Platform 36 and Build Tools 35.0.0, the following passed:
+
+```powershell
+.\gradlew.bat assembleDebug testDebugUnitTest testReleaseUnitTest check lintDebug lintRelease --no-watch-fs --console=plain
+git diff --check
+```
+
+- **167 tests per variant, 334 executions, zero failures/errors** (154 prior tests
+  plus 13 notification countdown regressions in each variant).
+- Debug APK assembly, Gradle `check`, debug/release unit tests and both lint tasks
+  passed. Both lint reports: **No issues found**.
+- Build Tools 35.0.0 APK permission inspection confirms the unchanged set and
+  **no Internet permission**. No dependency, SDK, manifest, icon, or app-screen
+  change was made.
+- Native notification building rechecks expiry immediately before publication;
+  a delayed build does not start a chronometer for an already-past deadline.
+- No physical device commands or tests, push, or merge were performed in this
+  follow-up. System UI rendering and native rounding remain device acceptance.
+
+New deterministic tests
+cover singular/plural boundaries, native eligibility, stable publication identity,
+ordinary/override pause and resume, override configuration preservation, recovered
+anchors, deadline expiry, pending/attention/startup/stopped suppression, display
+conflicts, wall-clock projection, and economical final-minute scheduling.
+
+**Native notification physical validation: not performed.** User-reported earlier
+visual acceptance does not validate the new System UI chronometer rendering.
+Follow the [native notification acceptance checks](README.md#native-notification-countdown-follow-up-physical-confirmation-pending)
+on Pixel 9 Pro, alongside the four pending recovery/safety scenarios above.
+
 ## PR 3 — Product identity and everyday experience — October 13, 2026
 
 Base: refreshed merged `main` (`69b3fdb`). Branch:
@@ -48,9 +140,9 @@ git diff --check
 
 ### Manual device tests and untested cases
 
-**PR 3 physical tests: not performed.** No configured local AVD was available for
+**At initial implementation time, PR 3 physical tests were not performed.** No configured local AVD was available for
 rendered UI inspection. Pixel 9 Pro OS/build is therefore not asserted. Use the
-[PR 3 acceptance checklist](README.md#pr-3-pixel-9-pro-acceptance-checklist-not-performed)
+[PR 3 acceptance checklist](README.md#pr-3-pixel-9-pro-acceptance-reference)
 for real display changes, upgrade/grant preservation, large text/TalkBack/themes,
 foreground lifecycle, notifications, force-stop, reboot and external conflicts.
 Historical PR 1/PR 2 device reports remain separate evidence below.

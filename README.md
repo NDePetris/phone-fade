@@ -17,7 +17,10 @@ qualifying-wake restoration before unlock, unlock-only counting, and disable
 restoration passing. The exact OS/build and individual logs were not supplied;
 not every lifecycle/recovery subcase was reported physically validated. The
 reference checklists below are not blanket pass claims. Historical automated
-results remain in VALIDATION.md. PR 3 physical acceptance is separately pending.
+results remain in VALIDATION.md. The user reports PR 3 core temporary-color and
+visual acceptance passing on Pixel 9 Pro; four recovery/safety scenarios remain
+untested (see VALIDATION.md). The notification countdown follow-up still requires
+its own physical confirmation.
 
 ## Temporary color and countdowns
 
@@ -44,8 +47,31 @@ Visible countdowns round whole minutes up: a new 2-minute allowance stays at
 `0:SS`, with `0:01` for positive subsecond time and `0:59` at the upper boundary.
 Exhaustion shows verified grayscale, pending application/unlock, or attention;
 never a zero/negative countdown. Seconds refresh only while the UI is resumed.
-Notifications use minute checkpoints, meaningful state changes, and a coarse
-“Less than a minute remaining” label, without a seconds timer.
+Notifications keep rounded-up, correctly pluralized minutes above one minute.
+During the final minute of active unlocked use, Android's native notification
+chronometer shows seconds in its standard template. The body labels it a
+**scheduled countdown**, not proof of grayscale. The service publishes once at the
+final-minute boundary and at existing checkpoints/state changes/expiry; System UI
+supplies the ticks without per-second service wakeups or notification rebuilds.
+A locked/off session shows a fixed seconds remainder with paused/waiting copy;
+unlock projects a new end from the remaining confirmed usage. Both ordinary
+allowance and temporary color use their own monotonic engine deadlines.
+
+Native display has limits: Android controls placement and timer formatting, may
+briefly show zero (or negative overdue time) if the expiry callback is delayed,
+and cannot detect an app termination that supplies no callback. Expanded copy
+explains the scheduled estimate and recovery path. Attention, startup, pending
+writes, expiry, and known stopped states do not publish a running chronometer;
+service destruction removes the notice when its callback is delivered. A prior
+interruption is still labelled on resumed confirmed usage. No countdown is proof
+that monitoring remains uninterrupted or that grayscale physically returned.
+
+The standard API adapts the elapsed deadline to Notification.when at publication;
+a protected time-change broadcast refreshes that wall-clock projection without
+changing session anchors. A 999 ms display offset compensates native downward
+second rounding; the engine deadline is unchanged. The existing single timer adds
+at most one final-minute boundary wake per active segment. No polling fallback,
+custom notification layout, exact alarm, wake lock, or permission was introduced.
 
 Checkpoint version 2 adds override usage, its captured duration, the exact expected
 baseline (including absent keys), and pending operation purpose/target. Version 1
@@ -412,7 +438,14 @@ the physical screen: screenshots need not capture the display transform.
 Exclusions, analytics, tiles, widgets, daily budgets,
 schedules, cloud sync, and automatic monitoring at boot remain out of scope.
 
-## PR 3 Pixel 9 Pro acceptance checklist (not performed)
+## PR 3 Pixel 9 Pro acceptance reference
+
+Core temporary-color and visual tests were reported successful by the user on
+Pixel 9 Pro. Exact OS/build, tested commit and individual logs were not supplied.
+The expanded reference items below remain unchecked because individual subcase
+results were not supplied; this is not a claim that all core tests are still
+unperformed. VALIDATION.md records the four explicitly untested safety scenarios.
+The native notification change requires the additional checks at the end.
 
 Record Android OS/build fingerprint, app commit, timing values, event timestamps,
 original values and key presence, notification visibility, and physical display
@@ -426,7 +459,7 @@ uninstall, or revoking permission against an active grayscale state.
   notification glyph/title, light/dark themes, portrait/landscape, large text,
   TalkBack, numeric errors, touch targets, and reachable setup/recovery controls.
 - [ ] With 2-minute allowance, verify rounded-up minutes then `0:SS` only in visible
-  UI. Background the activity; notification remains coarse and expiry still occurs.
+  UI. Background the activity; the native final-minute notification counts seconds and expiry still occurs.
 - [ ] Exhaust automatically, request 1-minute temporary color, visually confirm
   color and exact restored values/absence; ordinary allowance stays exhausted.
 - [ ] Use 20 seconds, screen off 20 seconds, wait on lock screen, unlock: only the
@@ -452,3 +485,21 @@ uninstall, or revoking permission against an active grayscale state.
 
 Storage/provider fault injection and exact millisecond thresholds are automated
 regressions, not claims of physically reproduced Android failures.
+### Native notification countdown follow-up (physical confirmation pending)
+
+- [ ] Check collapsed/expanded shade and lock-screen notifications on the exact
+  Pixel OS/build: correctly pluralized minutes above one minute, native seconds
+  during the final minute for ordinary color and temporary color, and no stale
+  “Less than a minute remaining” alongside a running countdown.
+- [ ] Lock/turn off in the final minute: timer is removed, fixed seconds do not
+  decrease. Unlock: only unlocked-use remainder resumes; short breaks retain usage.
+  Qualifying wake shows a fresh allowance waiting for unlock.
+- [ ] Change wall-clock time during the final minute. The rendered end is refreshed,
+  while allowance consumption and logical expiry remain based on elapsedRealtime.
+- [ ] Expire: countdown is replaced with verified grayscale or honest pending/
+  attention. Check scheduling delays; native zero/overdue rendering is not a success
+  claim. Notification denial/channel blocking must remain honestly reported.
+- [ ] With external snapshot protected and explicit approval for destructive steps,
+  verify known service interruption removes the timer and reopening reconciles
+  state. Abrupt death/force-stop/reboot cannot promise immediate notification
+  removal or restoration; keep these in the outstanding recovery/safety category.
