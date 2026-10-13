@@ -1,5 +1,49 @@
 # Offramp Fade validation
 
+## Standard notification wording refinement — October 13, 2026
+
+The user's subsequent clarification selects the existing standard Android template
+and final-minute native header chronometer. This supersedes the alternative proposed
+in the historical evaluation below; no custom RemoteViews or all-duration live
+timer is implemented. Offramp Fade remains the title and app identity.
+
+- Ordinary/temporary countdown bodies use `Color: X minutes remaining` and
+  `Temporary color: X minutes remaining`, with rounded-up, correct plurals.
+- At the existing final-minute boundary, bodies use `Color: Less than a minute
+  remaining` or `Temporary color: Less than a minute remaining`; Android supplies
+  live seconds in the header. The descriptor stays constant throughout that minute.
+- Paused/locked countdowns use static time, such as `Color: 0:32 remaining · Paused`
+  or the corresponding temporary-color label. Positive subsecond time shows `0:01`.
+  Verified grayscale uses `Grayscale active`, including while locked/off.
+- Expanded notifications repeat the compact status. Technical countdown wording
+  and the long explanatory paragraph are removed. Historical interruption details
+  remain in the app; known stopped/pending/attention states retain recovery copy.
+- Native timer eligibility, monotonic deadlines, epoch projection, pause/resume,
+  minute checkpoints, expiry and recovery behavior are unchanged. No polling,
+  permission, icon or broader UI change is introduced. Android still controls header
+  placement and may show overdue time if expiry publication is delayed.
+
+### Automated checks
+
+`assembleDebug testDebugUnitTest testReleaseUnitTest check lintDebug lintRelease
+--no-watch-fs --console=plain` passed using JDK 17, the pinned wrapper, SDK Platform
+36 and Build Tools 35.0.0. **170 tests per variant, 340 executions, zero failures or
+errors**; both lint reports: **No issues found**. APK permission inspection confirms
+unchanged permissions and no Internet permission. `git diff --check` passed.
+Focused regressions cover ordinary/temporary labels, stable final-minute publication,
+paused singular/plural and positive subsecond boundaries, lock/unlock anchors,
+expired/pending/stopped/attention timer suppression and verified grayscale copy.
+
+### Physical evidence and remaining acceptance
+
+No physical-device testing was performed for this wording change. The user-reported
+Pixel 9 Pro core/visual passes and working native countdown below remain historical
+evidence. All four listed recovery/safety scenarios remain physically pending.
+Check this build's collapsed and expanded notifications for both countdown labels,
+the final-minute transition, paused static seconds and unlock resume; include larger
+font settings and TalkBack. Shorter text reduces truncation pressure, but automated
+tests do not establish actual collapsed-shade fit or accessibility acceptance.
+
 ## Notification presentation evaluation — October 13, 2026
 
 The user reports that native countdowns work on Pixel 9 Pro, but the final-minute

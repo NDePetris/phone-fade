@@ -29,16 +29,12 @@ object MonitoringNotification {
         val countdown = whenMillis != null
         val builder = Notification.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(context.getString(R.string.app_name)).setContentText(text).setContentIntent(open)
+            .setStyle(Notification.BigTextStyle().bigText(text))
             .setOngoing(true).setOnlyAlertOnce(true).setShowWhen(countdown)
             .setUsesChronometer(countdown).setChronometerCountDown(countdown)
-        whenMillis?.let {
-            builder.setWhen(it)
-            builder.setStyle(Notification.BigTextStyle().bigText(text +
-                "\nCounts only while unlocked. The timer shows a scheduled end, not confirmation of grayscale. " +
-                "If monitoring is interrupted, open Offramp Fade."))
-        }
+        whenMillis?.let { builder.setWhen(it) }
         return builder.build()
     }
 
-    fun text(state: MonitoringState, now: Long): String = MonitoringPresentation.text(state, now, economical = true)
+    fun text(state: MonitoringState, now: Long): String = NotificationCountdown.presentation(state, now).text
 }

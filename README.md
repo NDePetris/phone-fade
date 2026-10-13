@@ -19,8 +19,8 @@ not every lifecycle/recovery subcase was reported physically validated. The
 reference checklists below are not blanket pass claims. Historical automated
 results remain in VALIDATION.md. The user reports PR 3 core temporary-color and
 visual acceptance passing on Pixel 9 Pro; four recovery/safety scenarios remain
-untested (see VALIDATION.md). The notification countdown follow-up still requires
-its own physical confirmation.
+untested (see VALIDATION.md). Native notification countdowns were subsequently
+reported working; the latest wording refinement requires its own physical check.
 
 ## Temporary color and countdowns
 
@@ -49,22 +49,26 @@ Exhaustion shows verified grayscale, pending application/unlock, or attention;
 never a zero/negative countdown. Seconds refresh only while the UI is resumed.
 Notifications keep rounded-up, correctly pluralized minutes above one minute.
 During the final minute of active unlocked use, Android's native notification
-chronometer shows seconds in its standard template. The body labels it a
-**scheduled countdown**, not proof of grayscale. The service publishes once at the
-final-minute boundary and at existing checkpoints/state changes/expiry; System UI
+chronometer shows seconds in its standard header; **Offramp Fade** stays the title.
+The body uses `Color: X minutes remaining` or `Temporary color: X minutes remaining`
+with correct plurals, changing to `Color: Less than a minute remaining` or
+`Temporary color: Less than a minute remaining` at the final-minute boundary.
+Expanded notifications show the same compact status. The service publishes once
+at the final-minute boundary and at existing checkpoints/state changes/expiry; System UI
 supplies the ticks without per-second service wakeups or notification rebuilds.
-A locked/off session shows a fixed seconds remainder with paused/waiting copy;
+A locked/off session shows static time, such as `Color: 0:32 remaining · Paused`
+(or the temporary-color label), with no live chronometer;
 unlock projects a new end from the remaining confirmed usage. Both ordinary
 allowance and temporary color use their own monotonic engine deadlines.
 
 Native display has limits: Android controls placement and timer formatting, may
 briefly show zero (or negative overdue time) if the expiry callback is delayed,
-and cannot detect an app termination that supplies no callback. Expanded copy
-explains the scheduled estimate and recovery path. Attention, startup, pending
-writes, expiry, and known stopped states do not publish a running chronometer;
+and cannot detect an app termination that supplies no callback. Attention, startup,
+pending writes, expiry, and known stopped states do not publish a running chronometer;
 service destruction removes the notice when its callback is delivered. A prior
-interruption is still labelled on resumed confirmed usage. No countdown is proof
-that monitoring remains uninterrupted or that grayscale physically returned.
+interruption remains visible in the app rather than lengthening countdown copy.
+No countdown is proof that monitoring remains uninterrupted or that grayscale
+physically returned.
 
 The standard API adapts the elapsed deadline to Notification.when at publication;
 a protected time-change broadcast refreshes that wall-clock projection without
