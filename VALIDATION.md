@@ -1,5 +1,104 @@
 # Offramp Fade validation
 
+## Notification presentation evaluation — October 13, 2026
+
+The user reports that native countdowns work on Pixel 9 Pro, but the final-minute
+header placement, “scheduled countdown” body, and long temporary-color copy are
+inconsistent/truncated, matching the current implementation at `35ebe0a`.
+The actual device-tested commit was not supplied. This is not a claim of new
+app-wide or recovery acceptance.
+
+### RemoteViews prototype and stop decision
+
+A temporary isolated debug package (`app.ndplabs.phonefade.notificationpreview`)
+was built and tested on the connected Pixel 9 Pro. Read-only device inspection
+reported Android 17 build `CP3A.260905.009` (fingerprint
+`google/caiman/caiman:17/CP3A.260905.009/16091614:user/release-keys`), physical size
+960 x 2142, density 360 dpi, and font scale 1.0. This identifies this evaluation's
+device; it does not retroactively identify the build of earlier user tests.
+The installed Offramp package was not updated, uninstalled, or started.
+
+The prototype used DecoratedCustomViewStyle and an elapsedRealtime-based
+RemoteViews Chronometer. A separate visible/accessible label was used because
+Chronometer.getContentDescription() describes only duration, ignoring the format
+string's “Temporary color”/“remaining” words. Foreground-service publication was
+accepted on the device using specialUse; no session monitoring was started.
+
+Native Android inflation/measurement on that device tested a representative
+300 dp content width and Android's documented 48 dp collapsed-content budget:
+
+| Synthetic case | Native measurement | Result |
+|---|---|---|
+| Live temporary color, 14 sp | One line; text bottom/height 37 px; budget 108 px | Fits this constrained measurement |
+| Paused temporary color, 28 sp | Two lines; last line bottom 146 px; measured view height/budget 108 px | 38 px of text cannot fit; clipping risk confirmed |
+
+The 28 sp case was a larger-text stress test, **not** a change to the Pixel's
+system font setting. These are on-device native layout measurements, not a
+claim that actual collapsed-shade rendering or TalkBack passed. Inspection did
+not establish complete System UI collapsed-notification acceptance. The prototype
+failed the minimum-height compatibility check before shipping was considered.
+
+Per the user's requirement 9, custom-layout implementation stopped. The prototype,
+temporary debug manifest/resources/classes and build suffix were removed. No
+production notification, session, grayscale, recovery, icon, dependency, or
+permission change is retained. Shrinking user-selected text to fit would undermine
+accessibility; assuming an expanded notification resolves collapsed clipping
+would not satisfy the requested acceptance criterion.
+
+### Preview cleanup and permission correction
+
+The preview was installed using `adb install -g`. Contrary to the intended setup,
+package inspection at cleanup showed WRITE_SECURE_SETTINGS granted to the isolated
+preview package as well as POST_NOTIFICATIONS. The preview executed synthetic
+notification code; its separate fresh recovery store had no snapshot, and the
+application's no-snapshot restoration path does not write secure settings. No
+display-setting mutation was performed. The preview package was uninstalled,
+removing its grant and foreground notification. No grant was revoked from the
+real app. Temporary UI-inspection files and prototype source files were removed.
+
+### Recommended standard-template alternative (not implemented)
+
+Keep Offramp Fade as title/identity and use the native **header chronometer for
+all active unlocked countdowns**, so its position never changes at one minute.
+Use short, stable body labels “Color remaining” or “Temporary color remaining”;
+remove “scheduled countdown” and long explanatory copy. Paused states use compact
+static remaining time and a paused label; waiting, grayscale and attention use
+short state text. Keep live timers suppressed for pending, expired, stopped and
+attention states. This preserves system layout/styling and avoids service polling,
+but does not place live seconds within the body. Obtain the user's selection of
+this alternative before implementing it; do not silently substitute it for the
+requested inline presentation.
+
+Sources: [Android custom notification constraints](https://developer.android.com/develop/ui/views/notifications/custom-notification),
+[RemoteViews Chronometer API](https://developer.android.com/reference/android/widget/RemoteViews#setChronometer(int,long,java.lang.String,boolean)),
+[AOSP Chronometer accessibility implementation](https://android.googlesource.com/platform/frameworks/base/+/HEAD/core/java/android/widget/Chronometer.java).
+
+The four previously recorded recovery/safety scenarios remain physically pending.
+This isolated synthetic evaluation does not validate app recreation, external
+correction conflicts, disabling a real override, force-stop, or reboot recovery.
+
+### Restored repository checks
+
+After removing temporary build inputs, a clean build/test/lint run is used to
+regenerate the real APK and prevent preview classes or package identifiers from
+remaining in generated outputs. Results:
+
+- `clean assembleDebug testDebugUnitTest testReleaseUnitTest check lintDebug
+  lintRelease --no-watch-fs --console=plain` passed with JDK 17, pinned wrapper,
+  SDK Platform 36 and Build Tools 35.0.0.
+- **167 tests per variant, 334 executions, zero failures/errors**. Both lint
+  reports: **No issues found**. `git diff --check` passed.
+- The clean build regenerated `app.ndplabs.phonefade` with Offramp Fade label;
+  no preview manifest component or debug suffix remains in the APK. Permissions
+  are unchanged and contain no Internet permission.
+- The existing native-library stripping notice (`libandroidx.graphics.path.so`
+  packaged unchanged) appeared during the clean build; it did not fail checks.
+- Only this validation record is committed. No production implementation change,
+  push, merge or release was performed.
+No new production regression test is retained because no behavioral change is
+being shipped; the two focused prototype layout cases above are the evaluation
+that triggered the explicit stop condition.
+
 ## PR 3 Pixel acceptance report and notification follow-up — October 13, 2026
 
 ### User-reported physical evidence
