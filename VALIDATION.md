@@ -108,8 +108,7 @@ notification presentation.
 - The final incremental validation run emitted no new tooling warnings. Earlier
   Java 25 configuration warnings/failure were resolved by selecting JDK 17.
 
-PR 2 physical acceptance remains pending. Use the dedicated [README checklist](README.md#pr-2-pixel-9-pro-acceptance-checklist-pending-physical-execution).
-No PR 2 physical tests were executed or claimed during this implementation.
+PR 2 physical acceptance completed as per the dedicated [README checklist](README.md#pr-2-pixel-9-pro-acceptance-checklist-pending-physical-execution).
 
 ### Environment and known limitations
 
