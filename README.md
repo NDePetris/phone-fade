@@ -107,6 +107,69 @@ stops cancel the override/session, with best-effort recovery and no automatic
 monitoring restart. Android cannot guarantee timely expiry, service restart,
 force-stop restoration, or boot restoration. Read-back is not physical acceptance.
 
+## Quiet Road screen
+
+The single screen uses the approved Quiet Road direction: canonical Offramp family
+mark, Warm Paper canvas, layered static road/landscape hero, compact saved timing
+summary, recovery/diagnostics disclosure and safety guidance. Light and dark themes
+use explicit Material 3 roles and native scalable typography. The launcher now uses
+the same canonical family symbol with adaptive color and monochrome themed layers.
+Notification template/cadence, display operations and monitoring semantics are unchanged.
+
+Ordinary color and temporary-color countdowns keep **Disable and restore** outlined.
+Automatic grayscale prioritizes eligible **Use temporary color**; manual grayscale
+prioritizes **Restore original settings** and explicitly says automatic breaks are
+off. Prior reconciliation appears below the dominant readout as “Some screen time
+may not have been counted,” preserving the existing interruption flag.
+
+**Edit timing settings** opens one in-place editor. The summary and each field's
+“Active” hint show durably saved values; a hint appears only for a changed field.
+Drafts never drive the countdown. Closing
+the editor preserves drafts. Save stays explicit and is disabled for unchanged,
+invalid or unavailable values. Confirmed durable completion shows “Settings saved.”
+Failures retain drafts and expose the actual issue. Completed user restoration
+shows “Original settings restored. Check your display.” A completed command without
+an original snapshot instead says “No saved settings to restore.” Feedback is
+transient and consumed once; no persistent success/recovery flag is introduced.
+
+[Implementation review and PR draft](design/QUIET_ROAD_REVIEW.md) describe the
+before/after, canonical artwork provenance, changed files and tradeoffs.
+[Compose preview fixtures](app/src/main/java/app/ndplabs/phonefade/QuietRoadPreviews.kt)
+cover synthetic states; they are not screenshots or physical acceptance.
+
+The approved disabled headline is **A quieter route awaits**; the factual label
+remains **Monitoring disabled**. Automatic break guidance uses the configured reset
+interval with correct singular/plural grammar. Expanded diagnostics group display/
+permission status, saved recovery information/commands, and recovery/manual controls.
+The refinement's native synthetic captures and test scope are recorded in VALIDATION.md;
+they do not establish physical grayscale or recovery acceptance.
+
+### Quiet Road Pixel 9 Pro acceptance — pending
+
+Record installed commit, Android OS/build, font/display size and theme. Protect the
+external original-settings snapshot using the preflight below. Obtain explicit
+authorization before active display-state tests or destructive recovery steps.
+
+- [ ] Capture actual ordinary-color, automatic/manual grayscale, temporary-color,
+  pause/unlock, interruption, permission/attention and expanded-recovery screens.
+  Compare illustration, hierarchy, warmth, spacing and control emphasis to Round 2.
+- [ ] Observe actual system grayscale independently of provider read-back; inspect
+  light/dark readability and recovery visibility while grayscale is active.
+- [ ] Check large text/display size, narrow widths, landscape, scrolling, wrapped
+  action labels, selectable commands and editing with the IME visible.
+- [ ] Check TalkBack headings, disclosure state, saved/draft values, field errors,
+  single spoken countdown description, quiet ticks, new attention and snackbar
+  announcements. Check effective 48dp targets and native reduced-motion behavior.
+- [ ] Edit/close/reopen/recreate with unsaved and invalid drafts; verify Save eligibility,
+  active-value accuracy, confirmed save/failure feedback and no duplicate announcements.
+- [ ] Check genuine restoration success, failure, retained recovery records and
+  snapshot-free no-op feedback. Verify visual color appearance separately.
+- [ ] Inspect collapsed/expanded notifications, final-minute chronometer, pause/resume,
+  large text and notification denial; this redesign does not alter notification code.
+- [ ] Complete the four historical pending scenarios: disable during temporary color,
+  override recreation/reopening, external correction conflicts, interruption/force-stop/reboot.
+  Prior reported passes do not close these gaps or accept the new screen.
+
 ## Automatic monitoring
 
 Grant the secure-settings permission below, choose settings, tap **Save settings**,

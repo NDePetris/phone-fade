@@ -9,6 +9,7 @@ data class MonitoringState(
     val running: Boolean = false,
     val ready: Boolean = false,
     val starting: Boolean = false,
+    val savedConfig: MonitoringConfig = checkpoint.config,
 )
 
 /** All commands are serialized, including manual actions and boot recovery. No Android dependencies. */
@@ -18,6 +19,7 @@ class PhoneFadeCoordinator(
     private val clock: () -> Long,
 ) {
     private var checkpoint = MonitoringCheckpoint()
+    private var savedConfig = checkpoint.config
     private var initialized = false
     private var storageFailed = false
     private var running = false
@@ -34,6 +36,7 @@ class PhoneFadeCoordinator(
         initialized = true
         try {
             checkpoint = store.load()
+            savedConfig = checkpoint.config
             // Also support injected legacy checkpoints; the disk codec performs this migration.
             if (checkpoint.pending != null && checkpoint.pendingPurpose == null) checkpoint = checkpoint.copy(
                 pendingPurpose = if (checkpoint.pending == DisplayEffect.ENABLE) OperationPurpose.ACTIVATE
@@ -165,17 +168,19 @@ class PhoneFadeCoordinator(
     }
 
     @Synchronized
-    fun configure(config: MonitoringConfig) {
-        if (storageFailed) return
+    fun configure(config: MonitoringConfig): CommandFeedback {
+        if (storageFailed) return CommandFeedback.FAILED
         // Account time using the old active anchor before applying the new allowance.
         checkpoint = checkpoint.copy(config = config)
         if (running && checkpoint.attention == null) transition(SessionEvent.ConfigurationChanged)
         else persistSafely()
         publish()
+        return if (!storageFailed && checkpoint.attention == null) CommandFeedback.SAVED else CommandFeedback.FAILED
     }
 
     @Synchronized
-    fun disable() {
+    fun disable(): CommandFeedback {
+        val hadOriginal = controller.status().original != null
         starting = false
         startRequest++
         running = false
@@ -187,6 +192,11 @@ class PhoneFadeCoordinator(
         persistSafely()
         perform(DisplayEffect.RESTORE)
         publish()
+        return when {
+            storageFailed || checkpoint.attention != null || checkpoint.pending != null -> CommandFeedback.FAILED
+            hadOriginal -> CommandFeedback.RESTORED
+            else -> CommandFeedback.NOTHING_TO_RESTORE
+        }
     }
 
     @Synchronized
@@ -310,7 +320,10 @@ class PhoneFadeCoordinator(
         publish()
     }
 
-    private fun persist() = store.save(checkpoint)
+    private fun persist() {
+        store.save(checkpoint)
+        savedConfig = checkpoint.config
+    }
     private fun persistSafely(): Boolean = try { persist(); true } catch (error: Exception) { failStorage(error); false }
     private fun failStorage(error: Exception) {
         starting = false
@@ -321,6 +334,6 @@ class PhoneFadeCoordinator(
             attention = "Monitoring storage failed: ${error.message}. Restore original settings; restart the app after fixing storage.")
     }
     private fun publish(display: ControllerStatus = controller.status()) {
-        mutableState.value = MonitoringState(checkpoint, display, running, initialized, starting)
+        mutableState.value = MonitoringState(checkpoint, display, running, initialized, starting, savedConfig)
     }
 }
