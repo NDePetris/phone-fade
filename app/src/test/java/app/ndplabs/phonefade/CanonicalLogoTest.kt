@@ -8,6 +8,57 @@ import org.junit.Test
 import org.w3c.dom.Element
 
 class CanonicalLogoTest {
+    private val root get() = if (File("src/main/res").exists()) File("..") else File(".")
+    private fun resource(name: String) = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+        .newDocumentBuilder().parse(File(root, "app/src/main/res/drawable/$name.xml"))
+    private val androidNs = "http://schemas.android.com/apk/res/android"
+
+    @Test fun launcherForegroundIsExactFamilyVectorWithUniformSafePlacement() {
+        val family = resource("ic_offramp_family")
+        val launcher = resource("ic_launcher_foreground")
+        val placement = launcher.getElementsByTagName("group").item(0) as Element
+        assertEquals("108", launcher.documentElement.getAttributeNS(androidNs, "viewportWidth"))
+        assertEquals("108", launcher.documentElement.getAttributeNS(androidNs, "viewportHeight"))
+        assertEquals("0.1875", placement.getAttributeNS(androidNs, "scaleX"))
+        assertEquals(placement.getAttributeNS(androidNs, "scaleX"), placement.getAttributeNS(androidNs, "scaleY"))
+        val x = placement.getAttributeNS(androidNs, "translateX").toDouble()
+        val y = placement.getAttributeNS(androidNs, "translateY").toDouble()
+        val width = 256 * .1875; val height = 266 * .1875
+        assertEquals(48.0, width, 0.0)
+        assertEquals(54.0, x + width / 2, 0.0); assertEquals(54.0, y + height / 2, 0.0)
+        assertTrue(x >= 21 && y >= 21 && x + width <= 87 && y + height <= 87)
+        for (tag in listOf("path", "clip-path")) {
+            val original = family.getElementsByTagName(tag); val converted = launcher.getElementsByTagName(tag)
+            assertEquals(original.length, converted.length)
+            for (index in 0 until original.length) {
+                for (key in listOf("pathData", "fillColor", "strokeColor", "strokeWidth", "strokeLineCap"))
+                    assertEquals((original.item(index) as Element).getAttributeNS(androidNs, key),
+                        (converted.item(index) as Element).getAttributeNS(androidNs, key))
+            }
+        }
+    }
+    @Test fun monochromeCutsOutCanonicalRoadUnionAndRetainsCanonicalLaneMarks() {
+        val family = resource("ic_offramp_family").getElementsByTagName("path")
+        val mono = resource("ic_launcher_monochrome")
+        val clips = mono.getElementsByTagName("clip-path")
+        assertEquals(3, clips.length)
+        for ((index, originalIndex) in listOf(1 to 1, 2 to 7)) {
+            val clip = clips.item(index) as Element
+            assertEquals("", clip.getAttributeNS(androidNs, "fillType"))
+            assertEquals("M-100,-100 V400 H400 V-100 Z " + (family.item(originalIndex) as Element).getAttributeNS(androidNs, "pathData"),
+                clip.getAttributeNS(androidNs, "pathData"))
+        }
+        val monochromePaths = mono.getElementsByTagName("path")
+        val expected = (0 until family.length).map { family.item(it) as Element }
+            .filterIndexed { index, element -> index == 0 || element.getAttributeNS(androidNs, "strokeLineCap") == "round" }
+        assertEquals(expected.size, monochromePaths.length)
+        for (index in expected.indices) {
+            val path = monochromePaths.item(index) as Element
+            assertEquals(expected[index].getAttributeNS(androidNs, "pathData"), path.getAttributeNS(androidNs, "pathData"))
+            val ink = path.getAttributeNS(androidNs, if (index == 0) "fillColor" else "strokeColor")
+            assertEquals("#FFFFFFFF", ink)
+        }
+    }
     @Test fun androidVectorPreservesCanonicalPathsClipColorsAndStrokeGeometry() {
         val root = if (File("src/main/res").exists()) File("..") else File(".")
         val source = File(root, "design/assets/offramp-primary.svg")

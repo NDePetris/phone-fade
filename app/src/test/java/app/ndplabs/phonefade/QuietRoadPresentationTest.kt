@@ -48,7 +48,8 @@ class QuietRoadPresentationTest {
             session = session.copy(exhausted = true, temporary = TemporaryColorState(300_000, consumedMs = 268_000))))
         val hero = QuietRoadPresentation.hero(temporary, 0)
         assertEquals("Temporary color remaining", hero.title); assertEquals("0:32", hero.countdown)
-        assertTrue(hero.guidance.contains("remains exhausted")); assertNull(hero.primary)
+        assertEquals("Counts only while unlocked. This doesn't reset your color allowance.", hero.guidance)
+        assertNull(hero.primary)
         assertEquals(HeroAction.DISABLE, hero.secondary)
     }
     @Test fun pauseAndUnlockStayQuietWithStaticCountdown() {
@@ -92,6 +93,33 @@ class QuietRoadPresentationTest {
         assertTrue(TimingDraft("1", "120", "2").canSave(saved, true))
         assertFalse(TimingDraft("1", "120", "2").canSave(saved, false))
         assertEquals("7 minutes", QuietRoadPresentation.hero(active, 0).countdown)
+    }
+    @Test fun approvedDisabledHeadlineKeepsFactualStateAndAction() {
+        val hero = QuietRoadPresentation.hero(MonitoringState(display = display, ready = true), 0)
+        assertEquals("A quieter route awaits", hero.title)
+        assertEquals("Monitoring disabled", hero.status)
+        assertEquals(HeroAction.START, hero.primary)
+        assertEquals("Enable monitoring to start your color allowance. Counts only while unlocked.", hero.guidance)
+    }
+    @Test fun automaticGuidanceUsesConfiguredDurationAndGrammarWithoutChangingRecovery() {
+        for (minutes in listOf(1, 5, 120)) {
+            val state = active.copy(display = gray, checkpoint = active.checkpoint.copy(
+                config = MonitoringConfig(resetMinutes = minutes), session = session.copy(exhausted = true)))
+            assertEquals("Turn your screen off for $minutes uninterrupted ${if (minutes == 1) "minute" else "minutes"} to earn a reset. Color returns when you wake it.",
+                QuietRoadPresentation.hero(state, 0).guidance)
+            val failed = state.copy(checkpoint = state.checkpoint.copy(attention = "Restore failed"))
+            assertFalse(QuietRoadPresentation.hero(failed, 0).guidance.contains("Color returns"))
+            assertEquals(HeroAction.DISABLE, QuietRoadPresentation.hero(failed, 0).primary)
+        }
+    }
+    @Test fun savedHintsAppearOnlyForChangedFieldsAndKeepInvalidErrors() {
+        assertNull(QuietRoadPresentation.fieldSupportingText("5", 5))
+        assertNull(QuietRoadPresentation.fieldSupportingText("005", 5))
+        assertEquals("Active: 1 minute", QuietRoadPresentation.fieldSupportingText("2", 1))
+        assertEquals("Active: 5 minutes", QuietRoadPresentation.fieldSupportingText("15", 5))
+        for (value in listOf("", "0", "121", "bad")) {
+            assertEquals("Enter a whole number from 1 to 120. Active: 5 minutes", QuietRoadPresentation.fieldSupportingText(value, 5))
+        }
     }
     @Test fun feedbackIsConsumedOnceAcrossCollectorsAndFailuresAreSilent() = runBlocking {
         val queue = CommandFeedbackQueue()

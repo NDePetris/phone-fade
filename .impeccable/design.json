@@ -19,7 +19,7 @@
   "components": [],
   "narrative": {
     "northStar": "Quiet Road",
-    "overview": "App-specific reference for the final implemented native Android system: warm paper and moss in light mode, Sky primary actions and darker green surfaces in dark mode. No rendered screenshots or physical acceptance exist for this implementation; native acceptance remains required. DESIGN.md owns extracted primitives. This sidecar omits HTML/CSS translations because the components are native Compose, not web components.",
+    "overview": "App-specific reference for the final implemented native Android system: warm paper and moss in light mode, Sky primary actions and darker green surfaces in dark mode. Native synthetic screen and drawable captures support the focused refinement; physical grayscale, recovery and complete accessibility acceptance remain required. DESIGN.md owns extracted primitives. This sidecar omits HTML/CSS translations because the components are native Compose, not web components.",
     "keyCharacteristics": ["Native Android system typography", "Static illustrated hero with text-protecting tonal veils", "Minimum 48dp action controls", "Exact canonical family logo asset"],
     "rules": [
       { "name": "Native source of truth", "body": "Follow FadeTheme.kt, FadeScreen.kt, and QuietRoadLandscape.kt. This app reference does not define the wider Offramp family.", "section": "colors" },

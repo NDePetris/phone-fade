@@ -1,5 +1,94 @@
 # Offramp Fade validation
 
+## Focused Quiet Road refinement — October 14, 2026
+
+Base `3b7076f`, same `feature/quiet-road-ui` branch. Only supplied attachments were
+untracked before editing; source work was clean. The user approved the initial visual
+direction and supplied Pixel light/dark baseline images. This pass changes launcher
+resources, presentation copy, Canvas clipping, editor density/label spacing and
+diagnostic grouping. Coordinator/session/recovery/service/notification code and
+production manifest are unchanged. Details: [refinement review](design/QUIET_ROAD_REVIEW.md).
+
+### Automated checks
+
+The repository JDK 17 build/test/check/lint family passed, with instrumentation APK
+assembly added:
+
+```powershell
+./gradlew.bat '-Dorg.gradle.java.home=C:/Program Files/Eclipse Adoptium/jdk-17.0.20.101-hotspot' assembleDebug assembleDebugAndroidTest testDebugUnitTest testReleaseUnitTest check lintDebug lintRelease --no-watch-fs --console=plain
+```
+
+- **200 unit tests per variant, 400 executions, zero failures/errors.** Both lint
+  reports: **No issues found**. `git diff --check` passed. SDK Platform 36, Build Tools
+  35.0.0 and pinned wrapper remain. The property selects the JDK 17 Gradle daemon;
+  this shell's JDK 25 wrapper launcher prints a native-access warning.
+- New unit cases cover exact disabled headline/state/action, configured reset
+  singular/plural grammar and failure precedence, conditional saved hints/errors,
+  exact launcher paths/placement and monochrome cutout/lane integrity. Existing
+  timing, feedback, conflict and recovery regressions remain.
+- Packaged production debug APK permission inspection confirms the unchanged set
+  and **no Internet permission**. Test-only Espresso is explicitly pinned to stable
+  3.7.0: the older transitive version failed on this device's removed input API
+  before UI assertions. No runtime dependency upgrade was made.
+
+### Native synthetic tests and rendering
+
+Connected Pixel 9 Pro, Android 17 build `CP3A.260905.009`; fingerprint
+`google/caiman/caiman:17/CP3A.260905.009/16091614:user/release-keys`. Physical
+size 960 x 2142; density 360 dpi. This identifies this bounded refinement test,
+not the historical reported acceptances or the supplied screenshots' exact build.
+
+Testing used an isolated `app.ndplabs.phonefade.visualreview` package copied from
+current source under ignored `app/build/quiet-road-review-harness`. Its manifest
+registers plain Android Application and the standard test host, with no product
+Activity, monitoring service/receiver or secure-settings/Internet permission.
+The real installed Fade package was not installed over, launched, cleared, granted,
+revoked or uninstalled. No system color/font/theme setting was changed. The user
+unlocked the device for the tests; temporary test-window keep-awake flags expired
+with the host Activity.
+
+- **Nine focused instrumentation tests passed:** eight Compose tests for drafts,
+  recreation, disclosure/validation/save eligibility, state/action rendering and
+  enlarged label/hint separation, plus one native drawable alpha test.
+- The native resource test caught unsupported `fillType` on clip paths. Final
+  monochrome uses reverse-winding complement clips; main road and branch overlap
+  are transparent while arch ink remains. Canonical color paths are unchanged.
+- Native screenshots captured synthetic disabled, color, automatic grayscale and
+  temporary-color states in light/dark, plus a 320dp/doubled-text disabled fixture.
+  Timing-card captures render the production composable alone in light/dark and
+  doubled-text form. A separate mask sheet uses native drawable rendering with
+  representative circle/rounded-square/themed treatments at two sizes.
+- Enlarged rendering revealed floating-label/hint overlap; measured extra label
+  outset fixed it. The final native regression and recapture passed. The large
+  timing screenshot is a viewport excerpt, not evidence that all fields/Save fit
+  without scrolling. Normal-size captures show the full compact card.
+- Early screen attempts failed while the Pixel was dozing. Some whole-screen editor
+  images had poor scroll/IME framing and were rejected; final editor evidence uses
+  the standalone card. Final fixture captures passed; no failed capture is claimed
+  as acceptance. No HTML detector or repeated full Impeccable audit was run.
+
+Final local evidence folder:
+`C:/Users/nicho/.codex/visualizations/2026/10/14/01a138ba-88fc-7df0-959d-36e3bb2c1125/quiet-road-final-native/`.
+The adjacent `quiet-road-before-after.png` compares supplied baselines with native
+fixture/card captures and explicitly labels their different timing values.
+These are **native synthetic renders**, not live session or physical grayscale
+tests. Test-host system chrome follows the current device theme even when fixture
+content forces light; it does not validate production system-bar appearance.
+
+### Remaining acceptance and recovery/permission risk
+
+Still pending: actual system grayscale readability; full TalkBack/focus/touch-target
+acceptance; enlarged display size, dark enlarged forms, landscape and live IME
+scrolling; installed icon caching/third-party launcher/themed-wallpaper appearance;
+live save/restoration feedback and latest notifications. The four historical
+recovery/safety gaps remain pending: disabling during temporary color, override
+recreation/reopening, external correction conflicts, interruption/force-stop/reboot.
+Read-back never establishes physical display effect. Exact snapshots, grants,
+checkpoint semantics and operation ordering remain unchanged. No production-scope
+deviation, push, PR, merge, deployment or release occurred.
+Both isolated test packages were successfully uninstalled after evidence retrieval.
+Their artifacts are separate from the real app and its retained recovery state.
+
 ## Quiet Road presentation — October 14, 2026
 
 Baseline: local/live remote `main` at `48f33701218a9d687e484a908e761b9244364d2a`;

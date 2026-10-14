@@ -1,5 +1,57 @@
 # Quiet Road implementation review
 
+## Focused refinement — October 14, 2026
+
+Base: `3b7076f` on the same feature branch; no uncommitted source work existed.
+The user approved the initial direction and supplied recent Pixel light/dark
+screenshots. Those baseline images show the obsolete launcher, road closure
+artifacts, repeated saved hints and the prior copy. The original implementation
+record below is historical; this section supersedes its launcher/copy details.
+
+- Launcher foreground reuses every canonical color path, stroke and clip unchanged,
+  uniformly placed at 48 x 49.875dp inside the centered 66dp safe area of a 108dp
+  adaptive layer. Warm Paper replaces the old background. The themed mask derives
+  from the canonical arch/road/lane paths with transparent road cutouts; it is a
+  one-ink treatment, not a new Fade symbol. Reverse-winding complement clips remove
+  both roads without filling their overlap. Native alpha tests verify this.
+- The disabled headline is exactly **A quieter route awaits**, with no period;
+  factual state/action and unlocked-counting explanation remain intact.
+- The road closes below its drawing plane and is explicitly clipped; the lower
+  veil fades markings sooner. Hills, grove, cloud and winding-road composition remain.
+- Expanded fields use 8dp spacing and only changed fields show saved-value hints;
+  invalid errors, dirty indication, bounds, persistence and explicit Save are unchanged.
+  A native enlarged-text capture revealed floating-label/hint overlap; fields now
+  reserve their measured extra label outset. Ordinary-size fields stay compact.
+- Automatic break copy has correct configured singular/plural duration. Temporary
+  color says it does not reset the allowance. Attention/failure precedence remains.
+- Diagnostics group status/permission, saved recovery information/commands and
+  manual/recovery controls. Detailed physical-verification caveats remain there;
+  the shorter footer still states restoration-before-uninstall/data-clearing and
+  Android interruption limitations.
+
+Changed source: `FadeScreen`, `QuietRoadPresentation`, `QuietRoadLandscape`, launcher
+foreground/monochrome/background, focused unit/instrumentation tests, and the test-only
+Espresso pin. No coordinator, storage, session, display-write, service, notification,
+permission or product architecture change. Existing product/design/validation docs
+are updated. A temporary isolated harness lives under ignored `app/build`; its
+Application is the plain Android Application and no monitoring components or
+privileged permission are registered. The real installed Fade package is untouched.
+
+Evidence and remaining checks: see the latest VALIDATION.md entry. Screen captures
+are **native Pixel renders of synthetic states**, not real monitoring sessions.
+Timing-card captures render the production composable alone. Mask previews are
+native drawable renders under representative masks, not a third-party launcher's
+installed icon. Local artifacts live under
+`C:/Users/nicho/.codex/visualizations/2026/10/14/01a138ba-88fc-7df0-959d-36e3bb2c1125/`.
+The earlier full-screen editor captures were rejected for scroll/IME framing; use
+the standalone timing-card captures. The enlarged-text confirmation has its own
+status in VALIDATION.md. No new grayscale or recovery acceptance is inferred.
+
+Launcher sizing reference: [Android adaptive icon guidance](https://developer.android.com/develop/ui/compose/system/icon_design_adaptive).
+Test-tooling reference: [AndroidX Test stable dependencies](https://developer.android.com/jetpack/androidx/releases/test).
+
+## Initial implementation record — `3b7076f`
+
 Branch: `feature/quiet-road-ui`; baseline: local and live remote `main` at `48f33701218a9d687e484a908e761b9244364d2a`. The only baseline untracked files were the user-supplied attachments, left intact. No reset, push, PR, merge or release.
 
 ## Before / after against Round 2

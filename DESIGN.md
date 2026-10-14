@@ -49,7 +49,7 @@ components:
 
 **Creative North Star: “Quiet Road.”** Warm paper, moss, and a restrained illustrated landscape support a calm native Android experience. This is the app's implemented reference, not authority for the wider Offramp family. The user approved the Round 2 direction; the values here reflect the final code, including darker dark-mode hero and card surfaces.
 
-Sources: [FadeTheme.kt](app/src/main/java/app/ndplabs/phonefade/FadeTheme.kt), [FadeScreen.kt](app/src/main/java/app/ndplabs/phonefade/FadeScreen.kt), and [QuietRoadLandscape.kt](app/src/main/java/app/ndplabs/phonefade/QuietRoadLandscape.kt). No rendered native screenshots or physical acceptance establish these values as validated. Native acceptance is still required. See [PRODUCT.md](PRODUCT.md) for the brief and [README.md](README.md) / [VALIDATION.md](VALIDATION.md) for behavior, safety, and evidence.
+Sources: [FadeTheme.kt](app/src/main/java/app/ndplabs/phonefade/FadeTheme.kt), [FadeScreen.kt](app/src/main/java/app/ndplabs/phonefade/FadeScreen.kt), and [QuietRoadLandscape.kt](app/src/main/java/app/ndplabs/phonefade/QuietRoadLandscape.kt). The user approved the initial visual direction and supplied Pixel reference screenshots. The focused refinement has native synthetic rendering evidence; this does not establish physical grayscale, recovery or complete accessibility acceptance. See [PRODUCT.md](PRODUCT.md) for the brief and [README.md](README.md) / [VALIDATION.md](VALIDATION.md) for behavior, safety, and evidence.
 
 ## Colors
 
@@ -67,17 +67,17 @@ One vertically scrolling column respects safe drawing insets and the keyboard. C
 
 ## Elevation & Depth
 
-The screen uses tonal surfaces rather than custom shadows. The hero illustration is a static Compose Canvas (280dp high), with a canvas-colored horizontal veil and lower fade protecting text. Native Material component behavior remains in place; no custom motion system is established.
+The screen uses tonal surfaces rather than custom shadows. The hero illustration is a static Compose Canvas (280dp high), explicitly clipped to its drawing plane, with a canvas-colored horizontal veil and lower fade protecting text. Road closures remain outside the clipped plane. Native Material component behavior remains in place; no custom motion system is established.
 
 ## Shapes
 
-Use the generous hero and card corners above, with smaller attention-container corners. Buttons and outlined fields retain Material 3 shapes. The exact canonical family logo is `ic_offramp_family`, displayed at its preserved aspect ratio (40 × 41.5625dp). Reuse the asset; do not redraw, reinterpret, or invent its geometry.
+Use the generous hero and card corners above, with smaller attention-container corners. Buttons and outlined fields retain Material 3 shapes. The exact canonical family logo is `ic_offramp_family`, displayed at its preserved aspect ratio (40 × 41.5625dp). The adaptive launcher uses the same paths uniformly scaled to 48 × 49.875dp, centered in a 108dp layer on Warm Paper. Its monochrome layer uses canonical road cutouts and lane marks, tinted by Android. Reuse the assets; do not redraw, reinterpret, or invent their geometry.
 
 ## Components
 
 - **Status hero:** illustrated tonal surface, status badge, heading/countdown, guidance, and state-specific primary/outlined actions. The landscape is decorative and carries no status information. Only stable status/cause announcements use polite live regions; countdown ticks do not.
-- **Timing settings:** tonal card with saved values and a disclosure for outlined numeric fields. Native error/supporting text and disabled states remain explicit. Unsaved edits have a visible label.
-- **Recovery and diagnostics:** disclosed tonal card with selectable commands and full-width outlined actions. Attention opens it automatically.
+- **Timing settings:** tonal card with saved values and a disclosure for outlined numeric fields, spaced 8dp apart. Show saved-value supporting hints only for changed fields; retain errors for invalid values. Reserve the measured extra floating-label outset for wrapped/enlarged text. Disabled states and unsaved edits remain explicit.
+- **Recovery and diagnostics:** disclosed tonal card grouping display/permission status, saved recovery information/commands, and recovery/manual controls. Attention opens it automatically.
 - **Permission setup:** contrasting tonal card with selectable monospace command text.
 - **Controls:** native filled, outlined, and text buttons. Outlined action borders use the theme outline (1dp). Disclosure icons indicate expanded/collapsed state through semantics as well as appearance.
 

@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -75,14 +76,26 @@ fun FadeScreen(state: MonitoringState, notificationsVisible: Boolean, feedback: 
                     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Disclosure("Recovery and diagnostics", diagnostics, R.drawable.ic_road_shield) { diagnostics = !diagnostics }
                         if (diagnostics) {
+                            Text("Display and permission status", style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.semantics { heading() })
                             Text(state.display.message)
                             Text(if (state.display.permissionGranted) "Secure-settings permission granted" else "Secure-settings permission missing")
-                            state.display.current?.let { Text("Current settings: enabled=${it.enabled ?: "absent"}, mode=${it.mode ?: "absent"}") }
+                            state.display.current?.let { Text("Current settings: enabled=${it.enabled ?: "absent"}, mode=${it.mode ?: "absent"}",
+                                style = MaterialTheme.typography.bodySmall) }
+                            Text("Read-back verifies Android settings, not the physical display effect. Check your display after restoration.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                            Text("Saved recovery information", style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.semantics { heading() })
                             state.display.original?.let { original ->
-                                Text("Saved recovery settings", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+                                Text("Original settings: enabled=${original.enabled ?: "absent"}, mode=${original.mode ?: "absent"}",
+                                    style = MaterialTheme.typography.bodySmall)
                                 Text("Keep this snapshot until restoration succeeds. Inspect external changes before using these commands for the same Android user:")
                                 SelectionContainer { Text(recoveryCommands(original), fontFamily = FontFamily.Monospace) }
-                            }
+                            } ?: Text("No saved original settings.", style = MaterialTheme.typography.bodyMedium)
+                            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                            Text("Recovery and manual controls", style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.semantics { heading() })
                             OutlinedButton(onClick = restore, enabled = state.ready, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                                 Text("Restore original settings")
                             }
@@ -97,7 +110,7 @@ fun FadeScreen(state: MonitoringState, notificationsVisible: Boolean, feedback: 
                 }
                 if (!notificationsVisible) Text("Notifications are hidden or blocked. Monitoring can continue, but its notice may only appear in Android’s Active apps list.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Settings checks do not verify the physical display effect. Restore before uninstalling or clearing app data. Android can interrupt monitoring.",
+                Text("Restore before uninstalling or clearing app data. Android can interrupt monitoring. Settings checks don't verify the display effect.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
             }
@@ -197,9 +210,11 @@ internal fun TimingSettings(config: MonitoringConfig, enabled: Boolean, save: (M
             Disclosure("Edit timing settings", expanded, R.drawable.ic_road_edit) { expanded = !expanded }
             if (!enabled) Text("Timing settings are unavailable while attention is required or the app is initializing.", style = MaterialTheme.typography.bodySmall)
             if (expanded) {
-                MinuteField("Color allowance", allowance, config.allowanceMinutes, enabled) { allowance = it }
-                MinuteField("Reset interval", reset, config.resetMinutes, enabled) { reset = it }
-                MinuteField("Temporary color duration", temporary, config.temporaryMinutes, enabled) { temporary = it }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MinuteField("Color allowance", allowance, config.allowanceMinutes, enabled) { allowance = it }
+                    MinuteField("Reset interval", reset, config.resetMinutes, enabled) { reset = it }
+                    MinuteField("Temporary color duration", temporary, config.temporaryMinutes, enabled) { temporary = it }
+                }
                 Text("Temporary duration changes apply next time. Saving does not clear used time or reset an exhausted allowance.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedButton(onClick = { draft.config()?.let(save) }, enabled = draft.canSave(config, enabled),
@@ -221,10 +236,19 @@ private fun TimingValue(label: String, minutes: Int) {
 @Composable
 private fun MinuteField(label: String, value: String, active: Int, enabled: Boolean, change: (String) -> Unit) {
     val invalid = value.toIntOrNull() !in 1..120
-    OutlinedTextField(value, change, label = { Text("$label (minutes)") }, enabled = enabled, isError = invalid,
-        supportingText = { Text(if (invalid) "Enter a whole number from 1 to 120. Active: ${CountdownFormatter.minutes(active)}"
-            else "Active: ${CountdownFormatter.minutes(active)}") },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
+    val supporting = QuietRoadPresentation.fieldSupportingText(value, active)
+    val density = LocalDensity.current
+    var extraLabelOutset by remember(label, density) { mutableStateOf(0.dp) }
+    // The floating label is centered on the field's top boundary. Reserve its
+    // extra measured outset when text scaling or wrapping exceeds one native line.
+    OutlinedTextField(value, change, label = {
+        Text("$label (minutes)", onTextLayout = { layout ->
+            extraLabelOutset = ((with(density) { layout.size.height.toDp() } - 16.dp) / 2).coerceAtLeast(0.dp)
+        })
+    }, enabled = enabled, isError = invalid,
+        supportingText = supporting?.let { message -> { Text(message) } },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true,
+        modifier = Modifier.fillMaxWidth().padding(top = extraLabelOutset))
 }
 
 @Composable

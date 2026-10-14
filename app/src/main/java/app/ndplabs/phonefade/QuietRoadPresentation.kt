@@ -14,6 +14,17 @@ enum class HeroAction(val label: String) {
 }
 
 object QuietRoadPresentation {
+    fun automaticBreakGuidance(resetMinutes: Int) = "Turn your screen off for $resetMinutes uninterrupted " +
+        "${if (resetMinutes == 1) "minute" else "minutes"} to earn a reset. Color returns when you wake it."
+
+    fun fieldSupportingText(value: String, active: Int): String? {
+        val messages = buildList {
+            if (value.toIntOrNull() !in 1..120) add("Enter a whole number from 1 to 120.")
+            if (value.toIntOrNull() != active) add("Active: ${CountdownFormatter.minutes(active)}")
+        }
+        return messages.takeIf { it.isNotEmpty() }?.joinToString(" ")
+    }
+
     fun spokenCountdown(value: String): String {
         if (!value.startsWith("0:")) return value
         val seconds = value.substringAfter(':').toInt()
@@ -41,7 +52,7 @@ object QuietRoadPresentation {
                 primary = HeroAction.RESTORE, secondary = HeroAction.START)
             if (state.display.original != null) return result("Recovery available", "Review display settings",
                 "Saved original settings are retained. Review recovery and diagnostics before continuing.", primary = HeroAction.RESTORE)
-            return result("Monitoring disabled", "Take a quieter break",
+            return result("Monitoring disabled", "A quieter route awaits",
                 "Enable monitoring to start your color allowance. Counts only while unlocked.", primary = HeroAction.START)
         }
         if (cp.pending != null) return result("Updating display settings", when (cp.pendingPurpose) {
@@ -54,7 +65,7 @@ object QuietRoadPresentation {
             DeviceActivity.UNLOCKED -> "Monitoring active"
         }
         if (state.display.ownsGrayscale) return result(status, "Grayscale active",
-            "Your color allowance is used up. A ${CountdownFormatter.minutes(cp.config.resetMinutes)} uninterrupted screen-off break earns a reset when you wake the screen.",
+            automaticBreakGuidance(cp.config.resetMinutes),
             primary = HeroAction.TEMPORARY.takeIf { MonitoringPresentation.canUseTemporaryColor(state) }, secondary = recovery)
         val temporary = cp.session.temporary != null
         val remaining = MonitoringPresentation.remaining(state, now)
@@ -63,7 +74,7 @@ object QuietRoadPresentation {
             if (temporary) "Temporary color has ended. Your ordinary allowance remains exhausted."
             else "Your color allowance is used up.", secondary = recovery)
         val guidance = when {
-            temporary -> "Counts only while unlocked. Your ordinary allowance remains exhausted."
+            temporary -> "Counts only while unlocked. This doesn't reset your color allowance."
             cp.session.activity == DeviceActivity.LOCKED -> "Unlock to resume counting. Short breaks keep your remaining time."
             cp.session.activity == DeviceActivity.OFF -> "Counting resumes after unlock. Short breaks keep your remaining time."
             else -> "Counts only while unlocked. Short breaks keep your remaining time."

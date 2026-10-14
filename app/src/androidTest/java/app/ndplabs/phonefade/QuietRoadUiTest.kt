@@ -3,7 +3,17 @@ package app.ndplabs.phonefade
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -28,9 +38,38 @@ class QuietRoadUiTest {
         compose.setContent { FadeTheme { TimingSettings(MonitoringConfig(), true) {} } }
         compose.onNodeWithText("Edit timing settings").performClick()
         compose.onNodeWithText("Save settings").assertIsNotEnabled()
+        compose.onNodeWithText("Active: 10 minutes").assertDoesNotExist()
+        compose.onNodeWithText("Active: 5 minutes").assertDoesNotExist()
         compose.onNodeWithText("Reset interval (minutes)").performTextReplacement("121")
         compose.onNodeWithText("Save settings").assertIsNotEnabled()
         compose.onNodeWithText("Enter a whole number from 1 to 120. Active: 5 minutes").assertExists()
+    }
+    @Test fun onlyChangedFieldShowsSavedHint() {
+        compose.setContent { FadeTheme { TimingSettings(MonitoringConfig(), true) {} } }
+        compose.onNodeWithText("Edit timing settings").performClick()
+        compose.onNodeWithText("Temporary color duration (minutes)").performTextReplacement("7")
+        compose.onNodeWithText("Active: 5 minutes").assertExists()
+        compose.onNodeWithText("Active: 10 minutes").assertDoesNotExist()
+        compose.onNodeWithText("Unsaved changes").assertExists()
+        compose.onNodeWithText("Save settings").assertIsEnabled()
+    }
+    @Test fun enlargedFloatingLabelsDoNotOverlapSavedHint() {
+        compose.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 2f)) {
+                FadeTheme {
+                    Column(Modifier.width(320.dp).verticalScroll(rememberScrollState())) {
+                        TimingSettings(MonitoringConfig(), true) {}
+                    }
+                }
+            }
+        }
+        compose.onNodeWithText("Edit timing settings").performClick()
+        compose.onNodeWithText("Color allowance (minutes)").performTextReplacement("15")
+        compose.waitForIdle()
+        val hint = compose.onNodeWithText("Active: 10 minutes", useUnmergedTree = true).fetchSemanticsNode()
+        val nextLabel = compose.onNodeWithText("Reset interval (minutes)", useUnmergedTree = true).fetchSemanticsNode()
+        assertTrue("Enlarged label must clear the preceding saved hint",
+            hint.positionInRoot.y + hint.size.height <= nextLabel.positionInRoot.y)
     }
     @Test fun manualHeroPrioritizesRestoreWithoutAutomaticBreakPromise() {
         var restores = 0

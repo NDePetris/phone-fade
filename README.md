@@ -112,8 +112,9 @@ force-stop restoration, or boot restoration. Read-back is not physical acceptanc
 The single screen uses the approved Quiet Road direction: canonical Offramp family
 mark, Warm Paper canvas, layered static road/landscape hero, compact saved timing
 summary, recovery/diagnostics disclosure and safety guidance. Light and dark themes
-use explicit Material 3 roles and native scalable typography. The launcher icon,
-notification template/cadence, display operations and monitoring semantics are unchanged.
+use explicit Material 3 roles and native scalable typography. The launcher now uses
+the same canonical family symbol with adaptive color and monochrome themed layers.
+Notification template/cadence, display operations and monitoring semantics are unchanged.
 
 Ordinary color and temporary-color countdowns keep **Disable and restore** outlined.
 Automatic grayscale prioritizes eligible **Use temporary color**; manual grayscale
@@ -122,7 +123,8 @@ off. Prior reconciliation appears below the dominant readout as “Some screen t
 may not have been counted,” preserving the existing interruption flag.
 
 **Edit timing settings** opens one in-place editor. The summary and each field's
-“Active” hint show durably saved values; drafts never drive the countdown. Closing
+“Active” hint show durably saved values; a hint appears only for a changed field.
+Drafts never drive the countdown. Closing
 the editor preserves drafts. Save stays explicit and is disabled for unchanged,
 invalid or unavailable values. Confirmed durable completion shows “Settings saved.”
 Failures retain drafts and expose the actual issue. Completed user restoration
@@ -134,6 +136,13 @@ transient and consumed once; no persistent success/recovery flag is introduced.
 before/after, canonical artwork provenance, changed files and tradeoffs.
 [Compose preview fixtures](app/src/main/java/app/ndplabs/phonefade/QuietRoadPreviews.kt)
 cover synthetic states; they are not screenshots or physical acceptance.
+
+The approved disabled headline is **A quieter route awaits**; the factual label
+remains **Monitoring disabled**. Automatic break guidance uses the configured reset
+interval with correct singular/plural grammar. Expanded diagnostics group display/
+permission status, saved recovery information/commands, and recovery/manual controls.
+The refinement's native synthetic captures and test scope are recorded in VALIDATION.md;
+they do not establish physical grayscale or recovery acceptance.
 
 ### Quiet Road Pixel 9 Pro acceptance — pending
 
