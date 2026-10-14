@@ -26,14 +26,17 @@ import kotlinx.coroutines.launch
 class GrayscaleViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as PhoneFadeApplication
     val state = app.coordinator.state
+    // A consumed result is never replayed by recomposition or activity recreation.
+    private val results = CommandFeedbackQueue()
+    val feedback = results.events
     fun refresh() = app.submit { app.coordinator.inspectDisplay() }
     fun enable() = app.submit { app.coordinator.manualEnable() }
-    fun restore() = app.submit { app.coordinator.disable() }
+    fun restore() = app.submit { results.offer(app.coordinator.disable()) }
     fun temporaryColor() = app.submit {
         app.coordinator.event(SessionEvent.Observe(app.activity()))
         app.coordinator.temporaryColor()
     }
-    fun configure(config: MonitoringConfig) = app.submit { app.coordinator.configure(config) }
+    fun configure(config: MonitoringConfig) = app.submit { results.offer(app.coordinator.configure(config)) }
     fun start() {
         viewModelScope.launch {
             val request = app.requestStart() ?: return@launch
@@ -64,7 +67,7 @@ class MainActivity : ComponentActivity() {
                 notificationsVisible = MonitoringNotification.visible(this)
             }
             FadeTheme {
-                FadeScreen(state, notificationsVisible, model::restore, model::enable,
+                FadeScreen(state, notificationsVisible, model.feedback, model::restore, model::enable,
                     model::temporaryColor, model::configure) {
                     if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
                         notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)

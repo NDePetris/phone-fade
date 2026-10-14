@@ -1,3 +1,5 @@
 * text=auto eol=lf
 gradlew.bat text eol=crlf
 *.jar binary
+# Preserve canonical handoff bytes as well as geometry; the regression checks its SHA-256.
+design/assets/offramp-primary.svg -text -eol whitespace=cr-at-eol

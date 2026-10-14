@@ -1,5 +1,82 @@
 # Offramp Fade validation
 
+## Quiet Road presentation — October 14, 2026
+
+Baseline: local/live remote `main` at `48f33701218a9d687e484a908e761b9244364d2a`;
+branch `feature/quiet-road-ui`. Supplied untracked attachments were preserved.
+Implementation details, before/after and PR draft: [review](design/QUIET_ROAD_REVIEW.md).
+
+### Automated checks
+
+Using Temurin JDK 17.0.20, pinned Gradle wrapper, SDK Platform 36 and Build Tools
+35.0.0, the following passed:
+
+```powershell
+$env:JAVA_HOME = 'C:/Program Files/Eclipse Adoptium/jdk-17.0.20.101-hotspot'
+./gradlew.bat assembleDebug assembleDebugAndroidTest testDebugUnitTest testReleaseUnitTest check lintDebug lintRelease --no-watch-fs --console=plain
+git diff --check
+```
+
+- **195 tests per variant, 390 executions, zero failures/errors.** All 170 baseline
+  tests remain. New cases cover state/action/copy, manual versus automatic guidance,
+  override eligibility and captured time, interruption placement, draft bounds/save
+  eligibility, durable-save failure, restored/failure/no-op results, permission/write/
+  journal-clear/completion-commit failures, external conflicts, one-shot delivery,
+  spoken duration, actual theme contrast and canonical SVG/vector geometry.
+- Debug APK, debug instrumentation APK, Gradle check and both lint tasks passed.
+  Both lint reports: **No issues found**. Six synthetic Compose instrumentation
+  tests compiled, but were **not executed** without an Android target.
+- Packaged debug APK permissions remain WRITE_SECURE_SETTINGS, FOREGROUND_SERVICE,
+  FOREGROUND_SERVICE_SPECIAL_USE, POST_NOTIFICATIONS, RECEIVE_BOOT_COMPLETED and
+  the app-local AndroidX receiver permission. **No Internet permission.** Production
+  manifest, launcher, notification/service, reducer and storage schemas are unchanged.
+  Standard preview/test tooling supplies a debug-only test host.
+- Theme tests check actual text/container/action/outline/error pairs across surface
+  roles, snackbar roles, disabled distinctness and artwork ink/veil combinations.
+  They found insufficient Sky action contrast on some proposed dark surfaces;
+  those surfaces and the hero were darkened before the passing run. These solid/
+  composited checks do not prove physical grayscale contrast or rendered appearance.
+- Canonical source SHA-256 and all paths, clip, fills, inherited stroke colors/widths,
+  caps and viewport are checked against the Android vector conversion.
+- Initial validation encountered sandbox cache access and a JDK 25 shell default;
+  authorized runs explicitly used JDK 17. Earlier lint found the replaced in-app
+  mark unused; it was removed, without altering the launcher. The existing SDK XML
+  tooling-version notice did not fail the final checks.
+
+### Manual device tests and visual evidence
+
+**Not performed for this redesign.** Read-only ADB discovery returned no device or
+emulator. No local AVD/system image was available. No install, grant, active
+display-setting operation, destructive recovery, screenshot or physical observation
+was performed. Model/OS/build for new testing is therefore not asserted.
+
+Ten synthetic Compose preview states are declared in light, dark, narrow/2x-font
+and landscape configurations. These are source fixtures, **not rendered screenshots**.
+An independent Impeccable source review compared composition/copy with the supplied
+Round 2 board. Its spoken-duration finding was fixed and reread as resolved; its
+scope does not establish rendered fidelity or TalkBack acceptance. No native-inapp
+visual pass is claimed from compilation or source inspection.
+
+### Untested/blocked cases and recovery/permission risk
+
+Complete the [Quiet Road Pixel checklist](README.md#quiet-road-pixel-9-pro-acceptance--pending)
+before visual/device acceptance: actual grayscale; light/dark/large text; TalkBack,
+touch targets, keyboard/landscape; draft recreation; confirmed save and restore
+feedback; missing permission/recovery visibility; notification appearance/cadence.
+The four historical pending safety scenarios remain pending: disable during
+temporary color; override recreation/reopening; external correction conflicts;
+interruption/force-stop/reboot. Historical reported Pixel passes are separate evidence.
+
+The coordinator adds only returned transient results and a nonpersistent projection
+of the last durably committed config. Existing operations and journal bookkeeping
+determine success; failed completion never produces restoration success. A snapshot-
+free completed command is distinguished from actual restoration. ViewModel results
+are consumed once and never stored in recovery checkpoints. Snackbar interruption
+after consumption is not replayed, avoiding duplicate announcements. Retained
+attention/errors and recovery controls remain the durable source of failure truth.
+Read-back remains distinct from observing physical color. Existing privileged grant,
+external snapshot protection and documented recovery limitations remain applicable.
+
 ## Standard notification wording refinement — October 13, 2026
 
 The user's subsequent clarification selects the existing standard Android template

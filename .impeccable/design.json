@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-14T11:29:55Z",
+  "title": "Design System: Offramp Fade — Quiet Road",
+  "extensions": {
+    "colorMeta": {
+      "light-primary-moss": { "role": "primary", "displayName": "Moss" },
+      "dark-primary-sky": { "role": "primary", "displayName": "Sky" },
+      "light-paper": { "role": "neutral", "displayName": "Warm Paper" },
+      "light-ink": { "role": "neutral", "displayName": "Ink" }
+    },
+    "typographyMeta": {
+      "native": { "displayName": "Native Material 3", "purpose": "Android system typography with Material roles; commands use monospace." }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": []
+  },
+  "components": [],
+  "narrative": {
+    "northStar": "Quiet Road",
+    "overview": "App-specific reference for the final implemented native Android system: warm paper and moss in light mode, Sky primary actions and darker green surfaces in dark mode. No rendered screenshots or physical acceptance exist for this implementation; native acceptance remains required. DESIGN.md owns extracted primitives. This sidecar omits HTML/CSS translations because the components are native Compose, not web components.",
+    "keyCharacteristics": ["Native Android system typography", "Static illustrated hero with text-protecting tonal veils", "Minimum 48dp action controls", "Exact canonical family logo asset"],
+    "rules": [
+      { "name": "Native source of truth", "body": "Follow FadeTheme.kt, FadeScreen.kt, and QuietRoadLandscape.kt. This app reference does not define the wider Offramp family.", "section": "colors" },
+      { "name": "Canonical logo", "body": "Reuse ic_offramp_family at its preserved aspect ratio; do not invent brand geometry.", "section": "components" }
+    ],
+    "dos": ["Do preserve native text scaling, wrapping, semantics, and visible recovery actions.", "Do verify implemented values through native acceptance."],
+    "donts": ["Don't substitute custom display fonts or a reconstructed family logo.", "Don't infer rendered or physical validation from code inspection or automated tests."]
+  }
+}

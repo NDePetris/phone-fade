@@ -2,57 +2,37 @@ package app.ndplabs.phonefade
 
 import android.os.SystemClock
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.isActive
 
 @Composable
-fun FadeScreen(state: MonitoringState, notificationsVisible: Boolean, restore: () -> Unit,
-    manualEnable: () -> Unit, temporaryColor: () -> Unit, configure: (MonitoringConfig) -> Unit,
-    start: () -> Unit) {
+fun FadeScreen(state: MonitoringState, notificationsVisible: Boolean, feedback: Flow<CommandFeedback> = emptyFlow(),
+    restore: () -> Unit, manualEnable: () -> Unit, temporaryColor: () -> Unit,
+    configure: (MonitoringConfig) -> Unit, start: () -> Unit) {
     val owner = LocalLifecycleOwner.current
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     LaunchedEffect(state, owner) {
@@ -65,105 +45,209 @@ fun FadeScreen(state: MonitoringState, notificationsVisible: Boolean, restore: (
             }
         }
     }
+    val snackbars = remember { SnackbarHostState() }
+    LaunchedEffect(feedback, owner) {
+        owner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            feedback.collect { result -> result.message?.let { snackbars.showSnackbar(it) } }
+        }
+    }
     val cp = state.checkpoint
     var diagnostics by rememberSaveable { mutableStateOf(false) }
-    Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { insets ->
-        Column(Modifier.fillMaxSize().padding(insets).verticalScroll(rememberScrollState()).padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Image(painterResource(R.drawable.ic_fade_mark), null, Modifier.size(32.dp))
-                Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.semantics { heading() })
-            }
-            Column(Modifier.widthIn(max = 600.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                // Only the stable state label announces; the changing countdown is outside its live region.
-                Text(MonitoringPresentation.status(state), style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-                Text(MonitoringPresentation.text(state, now), style = MaterialTheme.typography.headlineSmall)
-                if (cp.session.temporary != null) Text("Counts only while unlocked. Your ordinary allowance remains exhausted.")
-                if (state.display.ownsGrayscale || cp.session.temporary != null) Text(MonitoringPresentation.breakMessage(cp.config))
-                else Text("Unlocked use counts toward your color allowance. A continuous screen-off break earns a reset.")
-                cp.attention?.let {
-                    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
-                        Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onErrorContainer)
+    val needsRecovery = cp.attention != null || (!state.running && state.display.original != null && !state.display.ownsGrayscale)
+    LaunchedEffect(needsRecovery) { if (needsRecovery) diagnostics = true }
+    Scaffold(contentWindowInsets = WindowInsets.safeDrawing, containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbars) }) { insets ->
+        Column(Modifier.fillMaxSize().padding(insets).imePadding().verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().padding(horizontal = 20.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Image(painterResource(R.drawable.ic_offramp_family), null, Modifier.size(40.dp, 41.5625.dp))
+                    Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.semantics { heading() })
+                }
+                StatusHero(state, now, restore, temporaryColor, start)
+                if (state.ready) TimingSettings(state.savedConfig, cp.attention == null, configure)
+                else Text("Loading saved timing settings…", style = MaterialTheme.typography.bodyMedium)
+                if (!state.display.permissionGranted) PermissionSetup()
+                Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Disclosure("Recovery and diagnostics", diagnostics, R.drawable.ic_road_shield) { diagnostics = !diagnostics }
+                        if (diagnostics) {
+                            Text(state.display.message)
+                            Text(if (state.display.permissionGranted) "Secure-settings permission granted" else "Secure-settings permission missing")
+                            state.display.current?.let { Text("Current settings: enabled=${it.enabled ?: "absent"}, mode=${it.mode ?: "absent"}") }
+                            state.display.original?.let { original ->
+                                Text("Saved recovery settings", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+                                Text("Keep this snapshot until restoration succeeds. Inspect external changes before using these commands for the same Android user:")
+                                SelectionContainer { Text(recoveryCommands(original), fontFamily = FontFamily.Monospace) }
+                            }
+                            OutlinedButton(onClick = restore, enabled = state.ready, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                                Text("Restore original settings")
+                            }
+                            OutlinedButton(onClick = manualEnable,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                enabled = state.ready && !state.running && !state.starting && !cp.session.enabled && state.display.canEnable,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Enable manual grayscale") }
+                            if (state.running) Text("A qualifying screen-off break restores settings at wake. Counting starts after unlock. Short breaks do not add up.")
+                            Spacer(Modifier.height(4.dp))
+                        }
                     }
                 }
-                if (!notificationsVisible) Text("Notifications are hidden or blocked. Monitoring can continue, but its notice may only appear in Android’s Active apps list.")
-                val enabled = state.running || state.starting || cp.session.enabled
-                val stopOrRecover = state.running || state.starting || cp.attention != null
-                Button(onClick = if (stopOrRecover) restore else start,
-                    enabled = state.ready && (stopOrRecover || state.display.permissionGranted), modifier = Modifier.fillMaxWidth()) {
-                    Text(if (stopOrRecover) {
-                        if (enabled) "Disable and restore" else "Restore original settings"
-                    } else if (cp.session.enabled) "Resume monitoring" else "Enable monitoring")
-                }
-                if (cp.session.enabled && !state.running && !state.starting && cp.attention == null) {
-                    OutlinedButton(onClick = restore, enabled = state.ready, modifier = Modifier.fillMaxWidth()) { Text("Disable and restore") }
-                }
-                if (MonitoringPresentation.canUseTemporaryColor(state)) {
-                    OutlinedButton(onClick = temporaryColor, modifier = Modifier.fillMaxWidth()) { Text("Use temporary color") }
-                    Text("${CountdownFormatter.minutes(cp.config.temporaryMinutes)} of unlocked use. This does not reset your allowance.",
-                        style = MaterialTheme.typography.bodyMedium)
-                }
-                if (cp.attention != null || (!enabled && state.display.original != null)) {
-                    OutlinedButton(onClick = restore, enabled = state.ready, modifier = Modifier.fillMaxWidth()) { Text("Restore original settings") }
-                }
+                if (!notificationsVisible) Text("Notifications are hidden or blocked. Monitoring can continue, but its notice may only appear in Android’s Active apps list.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Settings checks do not verify the physical display effect. Restore before uninstalling or clearing app data. Android can interrupt monitoring.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
             }
-            HorizontalDivider()
-            TimingSettings(cp.config, state.ready && cp.attention == null, configure)
-            HorizontalDivider()
-            if (!state.display.permissionGranted) {
-                Text("Permission setup", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
-                Text("On a trusted computer, install Android Platform Tools. Enable USB debugging, connect your phone, and approve its debugging prompt. Run:")
-                SelectionContainer { Text(GrayscaleController.GRANT_COMMAND, fontFamily = FontFamily.Monospace) }
-                Text("Return here to refresh. This development grant has no normal Android permission dialog.")
-            }
-            TextButton(onClick = { diagnostics = !diagnostics }) {
-                Text(if (diagnostics) "Hide recovery and diagnostics" else "Recovery and diagnostics")
-            }
-            if (diagnostics || cp.attention != null) {
-                Text(state.display.message)
-                Text(if (state.display.permissionGranted) "Secure-settings permission granted" else "Secure-settings permission missing")
-                state.display.current?.let { Text("Current settings: enabled=${it.enabled ?: "absent"}, mode=${it.mode ?: "absent"}") }
-                state.display.original?.let { original ->
-                    Text("Saved recovery settings", style = MaterialTheme.typography.titleMedium)
-                    Text("Keep this snapshot until restoration succeeds. Inspect external changes before using these commands for the same Android user:")
-                    SelectionContainer { Text(recoveryCommands(original), fontFamily = FontFamily.Monospace) }
-                }
-                OutlinedButton(onClick = restore, enabled = state.ready, modifier = Modifier.fillMaxWidth()) { Text("Restore original settings") }
-                OutlinedButton(onClick = manualEnable,
-                    enabled = state.ready && !state.running && !state.starting && !cp.session.enabled && state.display.canEnable,
-                    modifier = Modifier.fillMaxWidth()) { Text("Enable manual grayscale") }
-            }
-            Text("Restore before uninstalling or clearing app data. Android can interrupt monitoring; read-back verifies settings, not the physical display effect.",
-                style = MaterialTheme.typography.bodySmall)
         }
     }
 }
 
 @Composable
-private fun TimingSettings(config: MonitoringConfig, enabled: Boolean, save: (MonitoringConfig) -> Unit) {
-    var allowance by rememberSaveable(config.allowanceMinutes) { mutableStateOf(config.allowanceMinutes.toString()) }
-    var reset by rememberSaveable(config.resetMinutes) { mutableStateOf(config.resetMinutes.toString()) }
-    var temporary by rememberSaveable(config.temporaryMinutes) { mutableStateOf(config.temporaryMinutes.toString()) }
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Timing settings", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
-        MinuteField("Color allowance", allowance, enabled) { allowance = it }
-        MinuteField("Reset interval", reset, enabled) { reset = it }
-        MinuteField("Temporary color duration", temporary, enabled) { temporary = it }
-        Text("Settings preserve consumed usage. Temporary duration changes apply next time. An exhausted allowance stays exhausted until a qualifying break.",
-            style = MaterialTheme.typography.bodyMedium)
-        val values = listOf(allowance, reset, temporary).map { it.toIntOrNull() }
-        val valid = values.all { it in 1..120 }
-        OutlinedButton(onClick = { save(MonitoringConfig(values[0]!!, values[1]!!, values[2]!!)) },
-            enabled = enabled && valid, modifier = Modifier.fillMaxWidth()) { Text("Save settings") }
+internal fun StatusHero(state: MonitoringState, now: Long, restore: () -> Unit, temporaryColor: () -> Unit, start: () -> Unit) {
+    val hero = QuietRoadPresentation.hero(state, now)
+    Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer) {
+        Box {
+            QuietRoadLandscape()
+            Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .08f)) {
+                        Icon(painterResource(if (state.checkpoint.attention != null) R.drawable.ic_road_attention else R.drawable.ic_road_leaf),
+                            null, Modifier.padding(10.dp).size(22.dp))
+                    }
+                    // Only stable status/cause announces. Countdown ticks are never live regions.
+                    Text(hero.status, style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                }
+                Column(Modifier.clearAndSetSemantics {
+                    heading()
+                    val spokenTime = hero.countdown?.let(QuietRoadPresentation::spokenCountdown)
+                    contentDescription = listOfNotNull(hero.title, spokenTime).joinToString(", ")
+                }) {
+                    Text(hero.title, style = if (hero.countdown == null) MaterialTheme.typography.headlineMedium
+                        else MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    hero.countdown?.let { countdown ->
+                        val parts = countdown.split(" ", limit = 2)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                            Text(parts[0], style = MaterialTheme.typography.displayLarge, fontWeight = FontWeight.Bold)
+                            if (parts.size == 2) Text(parts[1], style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.Bottom).padding(bottom = 8.dp))
+                        }
+                    }
+                }
+                Text(hero.guidance, style = MaterialTheme.typography.bodyMedium)
+                state.checkpoint.attention?.let {
+                    Surface(color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        shape = RoundedCornerShape(12.dp)) {
+                        Text(it, Modifier.padding(12.dp).semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                hero.history?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                Spacer(Modifier.height(4.dp))
+                fun click(action: HeroAction) = when (action) {
+                    HeroAction.START, HeroAction.RESUME -> start
+                    HeroAction.TEMPORARY -> temporaryColor
+                    HeroAction.DISABLE, HeroAction.RESTORE -> restore
+                }
+                fun enabled(action: HeroAction) = state.ready && when (action) {
+                    HeroAction.START, HeroAction.RESUME -> state.display.permissionGranted
+                    HeroAction.TEMPORARY -> MonitoringPresentation.canUseTemporaryColor(state)
+                    else -> true
+                }
+                hero.primary?.let { action ->
+                    Button(onClick = click(action), enabled = enabled(action), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Text(action.label)
+                    }
+                    if (action == HeroAction.TEMPORARY) Text("${CountdownFormatter.minutes(state.savedConfig.temporaryMinutes)} of unlocked use. Allowance stays exhausted.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                hero.secondary?.let { action ->
+                    OutlinedButton(onClick = click(action), enabled = enabled(action), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Text(action.label)
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun MinuteField(label: String, value: String, enabled: Boolean, change: (String) -> Unit) {
+internal fun TimingSettings(config: MonitoringConfig, enabled: Boolean, save: (MonitoringConfig) -> Unit) {
+    // Drafts stay composed when the disclosure closes; saved config never previews edits.
+    var allowance by rememberSaveable { mutableStateOf(config.allowanceMinutes.toString()) }
+    var reset by rememberSaveable { mutableStateOf(config.resetMinutes.toString()) }
+    var temporary by rememberSaveable { mutableStateOf(config.temporaryMinutes.toString()) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val draft = TimingDraft(allowance, reset, temporary)
+    val dirty = draft.changed(config)
+    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(painterResource(R.drawable.ic_road_clock), null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
+                Text("Timing settings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f).semantics { heading() })
+            }
+            TimingValue("Color allowance", config.allowanceMinutes)
+            TimingValue("Reset interval", config.resetMinutes)
+            TimingValue("Temporary color", config.temporaryMinutes)
+            if (dirty) Text("Unsaved changes", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+            Disclosure("Edit timing settings", expanded, R.drawable.ic_road_edit) { expanded = !expanded }
+            if (!enabled) Text("Timing settings are unavailable while attention is required or the app is initializing.", style = MaterialTheme.typography.bodySmall)
+            if (expanded) {
+                MinuteField("Color allowance", allowance, config.allowanceMinutes, enabled) { allowance = it }
+                MinuteField("Reset interval", reset, config.resetMinutes, enabled) { reset = it }
+                MinuteField("Temporary color duration", temporary, config.temporaryMinutes, enabled) { temporary = it }
+                Text("Temporary duration changes apply next time. Saving does not clear used time or reset an exhausted allowance.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(onClick = { draft.config()?.let(save) }, enabled = draft.canSave(config, enabled),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Save settings") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimingValue(label: String, minutes: Int) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(CountdownFormatter.minutes(minutes), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun MinuteField(label: String, value: String, active: Int, enabled: Boolean, change: (String) -> Unit) {
     val invalid = value.toIntOrNull() !in 1..120
-    OutlinedTextField(value, change, label = { Text("$label (minutes)") }, enabled = enabled,
-        isError = invalid, supportingText = { Text(if (invalid) "Enter a whole number from 1 to 120" else "1–120 minutes") },
+    OutlinedTextField(value, change, label = { Text("$label (minutes)") }, enabled = enabled, isError = invalid,
+        supportingText = { Text(if (invalid) "Enter a whole number from 1 to 120. Active: ${CountdownFormatter.minutes(active)}"
+            else "Active: ${CountdownFormatter.minutes(active)}") },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
+}
+
+@Composable
+private fun Disclosure(label: String, expanded: Boolean, icon: Int, toggle: () -> Unit) {
+    TextButton(onClick = toggle, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics {
+        stateDescription = if (expanded) "Expanded" else "Collapsed"
+    }) {
+        Icon(painterResource(icon), null, Modifier.size(20.dp))
+        Text(label, Modifier.weight(1f).padding(horizontal = 10.dp), style = MaterialTheme.typography.labelLarge)
+        Icon(painterResource(if (expanded) R.drawable.ic_road_up else R.drawable.ic_road_down), null, Modifier.size(20.dp))
+    }
+}
+
+@Composable
+private fun PermissionSetup() {
+    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Permission setup required", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+            Text("Secure-settings permission is missing. On a trusted computer, install Android Platform Tools. Enable USB debugging, connect your phone, and approve its debugging prompt. Run:",
+                style = MaterialTheme.typography.bodyMedium)
+            SelectionContainer { Text(GrayscaleController.GRANT_COMMAND, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
+            Text("Return here to refresh. This development grant has no normal Android permission dialog.", style = MaterialTheme.typography.bodyMedium)
+        }
+    }
 }
