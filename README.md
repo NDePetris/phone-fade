@@ -24,13 +24,21 @@ reported working; the latest wording refinement requires its own physical check.
 
 ## Temporary color and countdowns
 
-When automatic grayscale is verified active, **Use temporary color** restores
-exact original settings and grants the configured unlocked-use duration (default
-5 minutes, independently configurable from 1–120). The override starts only after
-verified restoration and a successful durable completion checkpoint. It leaves
-the ordinary session exhausted and preserves its accumulated usage. Manual
-grayscale and ordinary color do not offer this action; repeated taps cannot extend
-or stack overrides. Changing duration affects the next override.
+When automatic grayscale is verified active, **Use temporary color** now opens a
+duration selector: **5, 15, 30 minutes, 1 hour, or Custom**. The default selection
+is 5 minutes; Custom accepts 1–120 whole minutes and is pre-filled with the saved
+**Default custom duration** setting (also 5 minutes initially). Choosing a duration
+restores exact original settings and grants that amount of **unlocked interactive
+use**, not elapsed wall-clock time. The chosen duration is captured in the durable
+checkpoint before the override starts. The override starts only after verified
+restoration and successful durable completion. It leaves the ordinary session
+exhausted and preserves accumulated usage. Manual grayscale and ordinary color
+do not offer this action; repeated taps cannot extend or stack overrides.
+Changing the saved custom default does not change an active override.
+
+This is a selection experience for the existing temporary-color behavior, not
+a separate timed pause or an automatic restart after **Disable and restore**.
+That explicit disable still leaves monitoring off until the user enables it.
 
 Short screen-off breaks and interactive lock-screen time pause override use. A
 qualifying continuous screen-off break ends the override at wake and grants a
@@ -117,7 +125,8 @@ the same canonical family symbol with adaptive color and monochrome themed layer
 Notification template/cadence, display operations and monitoring semantics are unchanged.
 
 Ordinary color and temporary-color countdowns keep **Disable and restore** outlined.
-Automatic grayscale prioritizes eligible **Use temporary color**; manual grayscale
+Automatic grayscale prioritizes eligible **Use temporary color**, which opens the
+duration selector instead of immediately beginning an override; manual grayscale
 prioritizes **Restore original settings** and explicitly says automatic breaks are
 off. Prior reconciliation appears below the dominant readout as “Some screen time
 may not have been counted,” preserving the existing interruption flag.
@@ -174,8 +183,8 @@ authorization before active display-state tests or destructive recovery steps.
 
 Grant the secure-settings permission below, choose settings, tap **Save settings**,
 then **Enable monitoring**. Defaults: 10 minutes of color, 5 minutes for
-a reset. All three timing inputs accept whole minutes from 1 to 120; temporary
-color defaults to 5 minutes. Notification permission
+a reset. The two baseline timing inputs and the saved Custom-duration prefill
+accept whole minutes from 1 to 120; Custom defaults to 5 minutes. Notification permission
 is requested on Android 13+; denying it still permits monitoring, but the service
 notice appears in Android's Active apps list rather than the notification drawer.
 Blocked notifications/channels are also reported in the app on resume.
