@@ -47,7 +47,7 @@ class QuietRoadUiTest {
     @Test fun onlyChangedFieldShowsSavedHint() {
         compose.setContent { FadeTheme { TimingSettings(MonitoringConfig(), true) {} } }
         compose.onNodeWithText("Edit timing settings").performClick()
-        compose.onNodeWithText("Temporary color duration (minutes)").performTextReplacement("7")
+        compose.onNodeWithText("Default custom duration (minutes)").performTextReplacement("7")
         compose.onNodeWithText("Active: 5 minutes").assertExists()
         compose.onNodeWithText("Active: 10 minutes").assertDoesNotExist()
         compose.onNodeWithText("Unsaved changes").assertExists()
@@ -89,12 +89,29 @@ class QuietRoadUiTest {
         compose.onNodeWithText("Disable and restore").assertIsEnabled()
     }
     @Test fun automaticHeroOffersEligibleTemporaryColor() {
-        var overrides = 0
+        var selectedMinutes = 0
         val automatic = QuietRoadPreviewStates().values.elementAt(1)
-        compose.setContent { FadeTheme { StatusHero(automatic, 0, {}, { overrides++ }, {}) } }
+        compose.setContent { FadeTheme { StatusHero(automatic, 0, {}, { selectedMinutes = it }, {}) } }
         compose.onNodeWithText("Use temporary color").performClick()
-        compose.runOnIdle { assertEquals(1, overrides) }
+        compose.onNodeWithText("5 minutes").assertExists()
+        compose.onNodeWithText("15 minutes").assertExists()
+        compose.onNodeWithText("30 minutes").performClick()
+        compose.onNodeWithText("1 hour").assertExists()
+        compose.onNodeWithText("Use color").performClick()
+        compose.runOnIdle { assertEquals(30, selectedMinutes) }
         compose.onNodeWithText("Disable and restore").assertExists()
+    }
+    @Test fun temporaryColorPickerBlocksInvalidCustomAndAcceptsValidValue() {
+        var selectedMinutes = 0
+        val automatic = QuietRoadPreviewStates().values.elementAt(1)
+        compose.setContent { FadeTheme { StatusHero(automatic, 0, {}, { selectedMinutes = it }, {}) } }
+        compose.onNodeWithText("Use temporary color").performClick()
+        compose.onNodeWithText("Custom").performClick()
+        compose.onNodeWithText("Custom duration (minutes)").performTextReplacement("121")
+        compose.onNodeWithText("Use color").assertIsNotEnabled()
+        compose.onNodeWithText("Custom duration (minutes)").performTextReplacement("90")
+        compose.onNodeWithText("Use color").assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals(90, selectedMinutes) }
     }
     @Test fun unavailableSettingsPreserveDraftAndDisableSave() {
         compose.setContent { FadeTheme { TimingSettings(MonitoringConfig(), false) {} } }
