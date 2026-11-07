@@ -9,7 +9,7 @@ class TemporaryColorEngineTest {
         activity = DeviceActivity.UNLOCKED)
     private fun event(event: SessionEvent, now: Long) = SessionEngine.reduce(state, event, now, config).also { state = it.state }
     private fun begin() {
-        assertEquals(OperationPurpose.TEMPORARY_COLOR, event(SessionEvent.RequestTemporaryColor, 0).purpose)
+        assertEquals(OperationPurpose.TEMPORARY_COLOR, event(SessionEvent.RequestTemporaryColor(config.temporaryMinutes), 0).purpose)
         // Coordinator starts the anchor only after verified restoration + durable completion.
         state = state.copy(temporary = state.temporary!!.copy(activeSince = 0))
     }
@@ -63,7 +63,24 @@ class TemporaryColorEngineTest {
     }
     @Test fun repeatedRequestCannotStackOrExtend() {
         begin(); val previous = state
-        assertNull(event(SessionEvent.RequestTemporaryColor, 20_000).effect); assertEquals(previous, state)
+        assertNull(event(SessionEvent.RequestTemporaryColor(config.temporaryMinutes), 20_000).effect); assertEquals(previous, state)
+    }
+    @Test fun selectedDurationsAreCapturedIndependentlyOfSavedSettings() {
+        for (minutes in listOf(5, 15, 30, 60, 90)) {
+            state = SessionState(enabled = true, hasSession = true, consumedMs = 60_000, exhausted = true,
+                activity = DeviceActivity.UNLOCKED)
+            assertEquals(OperationPurpose.TEMPORARY_COLOR,
+                event(SessionEvent.RequestTemporaryColor(minutes), 0).purpose)
+            assertEquals(minutes * 60_000L, state.temporary!!.durationMs)
+            assertTrue(state.exhausted)
+        }
+    }
+    @Test fun invalidSelectedDurationsDoNotChangeState() {
+        for (minutes in listOf(-1, 0, 121, Int.MAX_VALUE)) {
+            val before = state
+            assertNull(event(SessionEvent.RequestTemporaryColor(minutes), state.observedAt).effect)
+            assertEquals(before, state)
+        }
     }
     @Test fun recoveryDoesNotChargeDowntimeOrInferBreak() {
         begin(); event(SessionEvent.Deadline(state.generation), 20_000)
@@ -82,7 +99,7 @@ class TemporaryColorEngineTest {
             try { MonitoringConfig(1, 1, duration); fail() } catch (_: IllegalArgumentException) { }
         }
         for (candidate in listOf(SessionState(), state.copy(exhausted = false), state.copy(activity = DeviceActivity.LOCKED))) {
-            assertNull(SessionEngine.reduce(candidate, SessionEvent.RequestTemporaryColor, 0, config).effect)
+            assertNull(SessionEngine.reduce(candidate, SessionEvent.RequestTemporaryColor(config.temporaryMinutes), 0, config).effect)
         }
     }
 }
