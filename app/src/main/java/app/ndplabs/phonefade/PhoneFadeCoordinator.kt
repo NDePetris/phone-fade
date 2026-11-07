@@ -157,13 +157,14 @@ class PhoneFadeCoordinator(
     }
 
     @Synchronized
-    fun temporaryColor() {
+    fun temporaryColor(durationMinutes: Int = checkpoint.config.temporaryMinutes) {
+        if (durationMinutes !in 1..120) return
         val display = controller.status()
         if (!running || storageFailed || checkpoint.attention != null || checkpoint.pending != null ||
             !checkpoint.session.exhausted || checkpoint.session.temporary != null ||
             checkpoint.session.activity != DeviceActivity.UNLOCKED || !display.permissionGranted || !display.ownsGrayscale) return
         checkpoint = checkpoint.copy(expectedBaseline = display.original)
-        transition(SessionEvent.RequestTemporaryColor)
+        transition(SessionEvent.RequestTemporaryColor(durationMinutes))
         publish()
     }
 
