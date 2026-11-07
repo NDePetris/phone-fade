@@ -38,5 +38,5 @@ class QuietRoadPreviewStates : PreviewParameterProvider<MonitoringState> {
 @Preview(name = "Quiet Road • landscape", showBackground = true, widthDp = 800, heightDp = 400)
 @Composable
 private fun QuietRoadScreenPreview(@PreviewParameter(QuietRoadPreviewStates::class) state: MonitoringState) {
-    FadeTheme { FadeScreen(state, true, restore = {}, manualEnable = {}, temporaryColor = {}, configure = {}, start = {}) }
+    FadeTheme { FadeScreen(state, true, restore = {}, manualEnable = {}, temporaryColor = { _ -> }, configure = {}, start = {}) }
 }
