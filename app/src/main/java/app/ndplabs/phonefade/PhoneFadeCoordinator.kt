@@ -157,13 +157,14 @@ class PhoneFadeCoordinator(
     }
 
     @Synchronized
-    fun temporaryColor() {
+    fun temporaryColor(durationMinutes: Int) {
+        if (durationMinutes !in 1..120) return
         val display = controller.status()
         if (!running || storageFailed || checkpoint.attention != null || checkpoint.pending != null ||
             !checkpoint.session.exhausted || checkpoint.session.temporary != null ||
             checkpoint.session.activity != DeviceActivity.UNLOCKED || !display.permissionGranted || !display.ownsGrayscale) return
         checkpoint = checkpoint.copy(expectedBaseline = display.original)
-        transition(SessionEvent.RequestTemporaryColor)
+        transition(SessionEvent.RequestTemporaryColor(durationMinutes))
         publish()
     }
 
@@ -211,7 +212,6 @@ class PhoneFadeCoordinator(
             // Account only through this reliable observation; destruction is not guaranteed.
             val now = clock()
             checkpoint = checkpoint.copy(session = checkpoint.session.copy(consumedMs = checkpoint.session.consumedAt(now),
-                temporary = checkpoint.session.temporary?.let { it.copy(consumedMs = it.consumedAt(now), activeSince = null) },
                 activeSince = null, breakSince = null), interrupted = true)
             running = false
             persistSafely()
@@ -264,7 +264,7 @@ class PhoneFadeCoordinator(
         if (transition.effect != null) {
             val retained = transition.state.copy(hasSession = previous.hasSession,
                 consumedMs = previous.consumedAt(observedAt), exhausted = previous.exhausted,
-                temporary = previous.temporary?.let { it.copy(consumedMs = it.consumedAt(observedAt), activeSince = null) },
+                temporary = previous.temporary,
                 activeSince = null, resetEarned = false)
             checkpoint = checkpoint.copy(session = retained, pending = transition.effect,
                 pendingPurpose = transition.purpose, pendingTarget = transition.state)
@@ -295,7 +295,7 @@ class PhoneFadeCoordinator(
         effectObservationWindow = if (running && target.enabled && now > target.observedAt) target.observedAt until now else null
         lastEffectObservationAt = -1L
         if (checkpoint.pendingPurpose == OperationPurpose.TEMPORARY_COLOR) target = target.copy(
-            temporary = target.temporary?.copy(activeSince = if (running && target.activity == DeviceActivity.UNLOCKED) now else null))
+            temporary = target.temporary?.copy(activeSince = now))
         if (!running) target = withoutAnchors(target)
         else target = target.copy(observedAt = now, activeSince = target.activeSince?.let { now })
         checkpoint = checkpoint.copy(session = target, pending = null, pendingPurpose = null, pendingTarget = null,
@@ -307,15 +307,16 @@ class PhoneFadeCoordinator(
         }
     }
 
+    // Only ordinary-use/break anchors are untrusted after downtime. Temporary
+    // color's boot-scoped elapsed anchor must survive unchanged.
     private fun withoutAnchors(session: SessionState) = session.copy(activeSince = null, breakSince = null,
-        temporary = session.temporary?.copy(activeSince = null), activity = DeviceActivity.LOCKED,
+        activity = DeviceActivity.LOCKED,
         observedAt = clock(), generation = session.generation + 1)
 
     private fun attention(message: String) {
         val now = clock()
         checkpoint = checkpoint.copy(attention = message, session = checkpoint.session.copy(
-            consumedMs = checkpoint.session.consumedAt(now), activeSince = null, breakSince = null,
-            temporary = checkpoint.session.temporary?.let { it.copy(consumedMs = it.consumedAt(now), activeSince = null) }))
+            consumedMs = checkpoint.session.consumedAt(now), activeSince = null, breakSince = null))
         persistSafely()
         publish()
     }
@@ -329,8 +330,7 @@ class PhoneFadeCoordinator(
         starting = false
         storageFailed = true
         running = false
-        checkpoint = checkpoint.copy(session = checkpoint.session.copy(activeSince = null, breakSince = null,
-            temporary = checkpoint.session.temporary?.copy(activeSince = null)),
+        checkpoint = checkpoint.copy(session = checkpoint.session.copy(activeSince = null, breakSince = null),
             attention = "Monitoring storage failed: ${error.message}. Restore original settings; restart the app after fixing storage.")
     }
     private fun publish(display: ControllerStatus = controller.status()) {

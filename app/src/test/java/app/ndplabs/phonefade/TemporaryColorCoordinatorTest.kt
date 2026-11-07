@@ -53,7 +53,7 @@ class TemporaryColorCoordinatorTest {
             assertTrue(it.state.value.display.ownsGrayscale)
         }
         fun override(): PhoneFadeCoordinator = exhausted().also {
-            it.temporaryColor()
+            it.temporaryColor(1)
             assertNotNull(it.state.value.checkpoint.session.temporary)
             assertEquals(baseline, current); assertNull(original)
         }
@@ -78,23 +78,127 @@ class TemporaryColorCoordinatorTest {
     }
     @Test fun onlyAutomaticOwnedGrayscaleCanRequestOverride() {
         val f = Fixture(); val c = f.coordinator()
-        c.manualEnable(); val count = f.writes; c.temporaryColor()
+        c.manualEnable(); val count = f.writes; c.temporaryColor(1)
         assertNull(f.saved.session.temporary); assertEquals(count, f.writes)
-        c.disable(); c.start(DeviceActivity.UNLOCKED, true); c.temporaryColor()
+        c.disable(); c.start(DeviceActivity.UNLOCKED, true); c.temporaryColor(1)
         assertNull(f.saved.session.temporary)
     }
     @Test fun repeatedRequestsAndDurationEditsCannotExtendActiveOverride() {
         val f = Fixture(); val c = f.override(); val count = f.writes
-        f.now += 20_000; c.temporaryColor(); c.configure(MonitoringConfig(120, 2, 120))
+        f.now += 20_000; c.temporaryColor(1); c.configure(MonitoringConfig(120, 2, 120))
         assertEquals(60_000L, f.saved.session.temporary!!.durationMs)
         assertEquals(40_000L, f.saved.session.temporary!!.remaining(f.now)); assertEquals(count, f.writes)
         assertTrue(f.saved.session.exhausted)
     }
-    @Test fun shortBreakPausesOverrideAndQualifyingWakeResetsBeforeUnlock() {
+    @Test fun pickerDurationIsPersistedAndSurvivesConfigurationChanges() {
+        val f = Fixture(); val c = f.exhausted()
+        c.temporaryColor(60)
+        assertEquals(3_600_000L, f.saved.session.temporary!!.durationMs)
+        assertEquals(f.baseline, f.current)
+        c.configure(MonitoringConfig(1, 2, 5))
+        assertEquals(3_600_000L, f.saved.session.temporary!!.durationMs)
+        f.now += 20_000
+        c.event(SessionEvent.Deadline(f.saved.session.generation))
+        assertEquals(3_580_000L, f.saved.session.temporary!!.remaining(f.now))
+    }
+    @Test fun invalidPickerDurationCannotRestoreOrWrite() {
+        val f = Fixture(); val c = f.exhausted(); val writes = f.writes
+        val before = f.saved
+        for (minutes in listOf(Int.MIN_VALUE, -1, 0, 121, Int.MAX_VALUE)) c.temporaryColor(minutes)
+        assertEquals(before, f.saved)
+        assertNull(f.saved.session.temporary)
+        assertTrue(f.saved.session.exhausted)
+        assertEquals(writes, f.writes)
+    }
+    @Test fun selectedDurationsRecoverOriginalDeadlineAndExpireWithoutExtending() {
+        for (minutes in listOf(1, 5, 15, 30, 60, 90, 120)) {
+            val f = Fixture(); val c = f.exhausted(); c.temporaryColor(minutes)
+            val duration = minutes * 60_000L
+            val deadline = f.now + duration
+            assertEquals(1, f.saved.config.temporaryMinutes) // Selection is never saved as a default.
+            f.now += 20_000
+            c.event(SessionEvent.Deadline(f.saved.session.generation))
+            val confirmed = f.saved.session.temporary!!
+            c.temporaryColor(120)
+            assertEquals(confirmed, f.saved.session.temporary)
+            f.now += 30_000 // Elapsed downtime consumes temporary color, never ordinary use.
+            val recovered = f.coordinator()
+            assertTrue(recovered.start(DeviceActivity.UNLOCKED, false))
+            assertEquals(deadline, f.saved.session.temporary!!.deadlineElapsed)
+            assertEquals(duration - 50_000, f.saved.session.temporary!!.remaining(f.now))
+            recovered.configure(MonitoringConfig(120, 2, 120))
+            assertEquals(duration, f.saved.session.temporary!!.durationMs)
+            f.now = deadline + 5_000 // Delayed callback still expires the chosen allowance.
+            recovered.event(SessionEvent.Deadline(f.saved.session.generation))
+            assertNull(f.saved.session.temporary)
+            assertTrue(recovered.state.value.display.ownsGrayscale)
+            assertEquals(60_000L, f.saved.session.consumedMs)
+            recovered.disable()
+            assertEquals(f.baseline, f.current)
+        }
+    }
+    @Test fun selectedDurationSurvivesEachInterruptedRestorationWrite() {
+        for (minutes in listOf(5, 15, 30, 60, 90, 120)) for (step in 1..3) {
+            val f = Fixture(ColorSettings(null, null)); val c = f.exhausted()
+            f.dieAtWrite = f.writes + step
+            try { c.temporaryColor(minutes); fail() } catch (_: ProcessDeath) { }
+            assertEquals(f.baseline, f.original)
+            assertEquals(minutes * 60_000L, f.saved.pendingTarget!!.temporary!!.durationMs)
+            f.dieAtWrite = null
+            val recovered = f.coordinator()
+            assertEquals(f.baseline, f.current)
+            assertNull(f.original)
+            assertTrue(recovered.start(DeviceActivity.UNLOCKED, false))
+            assertEquals(minutes * 60_000L, f.saved.session.temporary!!.remaining(f.now))
+        }
+    }
+    @Test fun selectedDurationIsSafeAcrossIntentAndCompletionCommitFailures() {
+        for (minutes in listOf(5, 15, 30, 60, 90, 120)) for (completion in listOf(false, true)) {
+            val f = Fixture(); val c = f.exhausted(); val writes = f.writes
+            f.failCommit = {
+                if (completion) it.pending == null && it.session.temporary != null
+                else it.pendingPurpose == OperationPurpose.TEMPORARY_COLOR
+            }
+            c.temporaryColor(minutes)
+            assertNull(c.state.value.checkpoint.session.temporary)
+            assertNotNull(c.state.value.checkpoint.attention)
+            assertFalse(c.state.value.running)
+            if (completion) {
+                assertEquals(f.baseline, f.current)
+                assertEquals(minutes * 60_000L, f.saved.pendingTarget!!.temporary!!.durationMs)
+                f.failCommit = { false }
+                val recovered = f.coordinator()
+                assertTrue(recovered.start(DeviceActivity.UNLOCKED, false))
+                assertEquals(minutes * 60_000L, f.saved.session.temporary!!.remaining(f.now))
+            } else {
+                assertEquals(writes, f.writes)
+                assertEquals(f.baseline, f.original)
+                assertNull(f.saved.pending)
+            }
+        }
+    }
+    @Test fun stalePickerConfirmationCannotBypassEligibility() {
+        for (change in listOf("lock", "disable", "permission", "external")) {
+            val f = Fixture(); val c = f.exhausted()
+            when (change) {
+                "lock" -> c.event(SessionEvent.Observe(DeviceActivity.LOCKED))
+                "disable" -> c.disable()
+                "permission" -> f.permission = false
+                "external" -> f.current = ColorSettings("1", "11")
+            }
+            val before = f.saved; val current = f.current; val original = f.original; val writes = f.writes
+            c.temporaryColor(30)
+            assertEquals(before, f.saved)
+            assertEquals(current, f.current)
+            assertEquals(original, f.original)
+            assertEquals(writes, f.writes)
+        }
+    }
+    @Test fun shortBreakCountsElapsedTimeAndQualifyingWakeResetsBeforeUnlock() {
         val f = Fixture(); val c = f.override(); f.now += 20_000
         c.event(SessionEvent.Observe(DeviceActivity.OFF)); f.now += 20_000
         c.event(SessionEvent.Observe(DeviceActivity.LOCKED)); f.now += 90_000
-        assertEquals(40_000L, f.saved.session.temporary!!.remaining(f.now))
+        assertEquals(0L, f.saved.session.temporary!!.remaining(f.now))
         c.event(SessionEvent.Observe(DeviceActivity.OFF)); f.now += 120_000
         c.event(SessionEvent.Observe(DeviceActivity.LOCKED))
         assertNull(f.saved.session.temporary); assertFalse(f.saved.session.exhausted)
@@ -110,21 +214,21 @@ class TemporaryColorCoordinatorTest {
     @Test fun interruptionDuringEachRestorationWriteRetainsSnapshotAndPurpose() {
         for (step in 1..3) {
             val f = Fixture(); val c = f.exhausted(); f.dieAtWrite = f.writes + step
-            try { c.temporaryColor(); fail() } catch (_: ProcessDeath) { }
+            try { c.temporaryColor(1); fail() } catch (_: ProcessDeath) { }
             assertEquals(f.baseline, f.original); assertNull(f.saved.session.temporary)
             assertEquals(OperationPurpose.TEMPORARY_COLOR, f.saved.pendingPurpose)
             assertTrue(f.saved.session.exhausted)
             f.dieAtWrite = null
             val recovered = f.coordinator()
             assertEquals(f.baseline, f.current); assertNull(f.original)
-            assertNotNull(f.saved.session.temporary); assertNull(f.saved.session.temporary!!.activeSince)
+            assertNotNull(f.saved.session.temporary); assertEquals(f.now, f.saved.session.temporary!!.activeSince)
             assertTrue(recovered.start(DeviceActivity.UNLOCKED, false))
             assertEquals(60_000L, f.saved.session.temporary!!.remaining(f.now))
         }
     }
     @Test fun deathAfterVerifiedRestoreAndJournalClearReconcilesBaseline() {
         val f = Fixture(); val c = f.exhausted(); f.dieAfterJournalClear = true
-        try { c.temporaryColor(); fail() } catch (_: ProcessDeath) { }
+        try { c.temporaryColor(1); fail() } catch (_: ProcessDeath) { }
         assertNull(f.original); assertEquals(f.baseline, f.current)
         f.dieAfterJournalClear = false; val recovered = f.coordinator()
         assertNotNull(f.saved.session.temporary); assertTrue(recovered.start(DeviceActivity.UNLOCKED, false))
@@ -133,13 +237,13 @@ class TemporaryColorCoordinatorTest {
     @Test fun failedIntentPersistencePreventsRestoration() {
         val f = Fixture(); val c = f.exhausted(); val count = f.writes
         f.failCommit = { it.pendingPurpose == OperationPurpose.TEMPORARY_COLOR }
-        c.temporaryColor(); assertEquals(count, f.writes); assertEquals(f.baseline, f.original)
+        c.temporaryColor(1); assertEquals(count, f.writes); assertEquals(f.baseline, f.original)
         assertNull(c.state.value.checkpoint.session.temporary); assertFalse(c.state.value.running)
     }
     @Test fun restorationSuccessThenFailedCompletionNeverClaimsStartedOverride() {
         val f = Fixture(); val c = f.exhausted()
         f.failCommit = { it.pending == null && it.session.temporary != null }
-        c.temporaryColor()
+        c.temporaryColor(1)
         assertEquals(f.baseline, f.current); assertNull(f.original)
         assertNull(c.state.value.checkpoint.session.temporary); assertNotNull(c.state.value.checkpoint.attention)
         assertEquals(OperationPurpose.TEMPORARY_COLOR, f.saved.pendingPurpose)
@@ -151,7 +255,7 @@ class TemporaryColorCoordinatorTest {
         for (step in 1..4) {
             val f = Fixture(); val c = f.exhausted()
             if (step == 4) f.journalClearFails = true else f.rejectAtWrite = f.writes + step
-            c.temporaryColor()
+            c.temporaryColor(1)
             assertNull(c.state.value.checkpoint.session.temporary); assertNotNull(f.original)
             assertNotNull(c.state.value.checkpoint.attention); assertTrue(f.saved.session.exhausted)
             assertEquals(OperationPurpose.TEMPORARY_COLOR, f.saved.pendingPurpose)
@@ -170,7 +274,7 @@ class TemporaryColorCoordinatorTest {
     }
     @Test fun externalChangeAfterInterruptedRestorationDoesNotCompleteOverride() {
         val f = Fixture(); val c = f.exhausted(); f.dieAfterJournalClear = true
-        try { c.temporaryColor(); fail() } catch (_: ProcessDeath) { }
+        try { c.temporaryColor(1); fail() } catch (_: ProcessDeath) { }
         f.dieAfterJournalClear = false; f.current = ColorSettings("0", "11"); val count = f.writes
         val recovered = f.coordinator()
         assertNull(recovered.state.value.checkpoint.session.temporary); assertNotNull(recovered.state.value.checkpoint.attention)
@@ -204,11 +308,16 @@ class TemporaryColorCoordinatorTest {
         assertEquals(f.baseline, f.current); assertFalse(c.state.value.display.ownsGrayscale)
         assertNotNull(c.state.value.checkpoint.attention); assertTrue(f.saved.session.exhausted)
     }
-    @Test fun processRecoveryPreservesOnlyConfirmedOverrideUsage() {
+    @Test fun processRecoveryAfterExpiryReappliesOnlyOnUnlockedStartup() {
         val f = Fixture(); val c = f.override(); f.now += 20_000
         c.event(SessionEvent.Deadline(f.saved.session.generation)); f.now += 900_000
-        val recovered = f.coordinator(); assertTrue(recovered.start(DeviceActivity.UNLOCKED, false))
-        assertEquals(40_000L, f.saved.session.temporary!!.remaining(f.now)); assertTrue(f.saved.interrupted)
+        val recovered = f.coordinator(); val writes = f.writes
+        assertTrue(recovered.start(DeviceActivity.LOCKED, false))
+        assertEquals(0L, f.saved.session.temporary!!.remaining(f.now)); assertTrue(f.saved.interrupted)
+        assertEquals(writes, f.writes)
+        assertNull(f.saved.session.breakSince)
+        recovered.event(SessionEvent.Observe(DeviceActivity.UNLOCKED))
+        assertNull(f.saved.session.temporary); assertTrue(recovered.state.value.display.ownsGrayscale)
     }
     @Test fun rebootAndUserStopCancelOverrideWithoutRestarting() {
         for (userStopped in listOf(false, true)) {
@@ -217,6 +326,47 @@ class TemporaryColorCoordinatorTest {
             assertNull(f.saved.session.temporary); assertFalse(f.saved.session.enabled)
             assertFalse(recovered.state.value.running); assertEquals(f.baseline, f.current)
         }
+    }
+    @Test fun unknownBootIdentityCancelsElapsedIntervalWithoutAutomaticRestart() {
+        val f = Fixture(); f.override()
+        val recovered = f.coordinator(boot = null)
+        assertNull(f.saved.session.temporary); assertFalse(f.saved.session.enabled)
+        assertFalse(recovered.state.value.running); assertEquals(f.baseline, f.current)
+        assertFalse(recovered.start(DeviceActivity.UNLOCKED, false))
+    }
+    @Test fun elapsedExpiryWithPermissionLossMakesNoWritesOrSuccessClaim() {
+        val f = Fixture(); val c = f.override(); val writes = f.writes
+        f.permission = false; f.expire(c)
+        assertEquals(writes, f.writes); assertEquals(f.baseline, f.current)
+        assertNotNull(c.state.value.checkpoint.attention)
+        assertFalse(c.state.value.display.ownsGrayscale)
+        assertEquals(OperationPurpose.REACTIVATE, f.saved.pendingPurpose)
+        assertEquals(f.baseline, f.saved.expectedBaseline)
+    }
+    @Test fun offExpiryStopsSchedulingAndQualifyingWakeStillWinsWithoutGrayscaleWrites() {
+        val f = Fixture(); val c = f.override(); val writes = f.writes
+        c.event(SessionEvent.Observe(DeviceActivity.OFF))
+        f.expire(c)
+        assertEquals(0L, f.saved.session.temporary!!.remaining(f.now))
+        assertNull(f.saved.session.deadline(f.saved.config))
+        assertEquals(writes, f.writes)
+        f.now += 60_000
+        c.event(SessionEvent.Observe(DeviceActivity.LOCKED))
+        assertNull(f.saved.session.temporary); assertFalse(f.saved.session.exhausted)
+        assertNull(f.saved.session.activeSince)
+        assertEquals(writes, f.writes); assertEquals(f.baseline, f.current)
+    }
+    @Test fun lateDuplicateAndPreviousIntervalCallbacksCannotPerformAnotherDisplayOperation() {
+        val f = Fixture(); val c = f.override(); val generation = f.saved.session.generation
+        f.now += 90_000
+        c.event(SessionEvent.Deadline(generation))
+        assertTrue(c.state.value.display.ownsGrayscale)
+        val writes = f.writes
+        c.event(SessionEvent.Deadline(generation)); assertEquals(writes, f.writes)
+        c.temporaryColor(15)
+        val before = f.saved; val count = f.writes
+        c.event(SessionEvent.Deadline(generation))
+        assertEquals(before, f.saved); assertEquals(count, f.writes)
     }
     @Test fun permissionLossStopsOverrideAndObserverDetectsDisabledModeChange() {
         val f = Fixture(); val c = f.override(); f.permission = false; c.inspectDisplay()
@@ -237,7 +387,7 @@ class TemporaryColorCoordinatorTest {
         // The failed intent did not reach disk; simulate the last durable intent from
         // a process that died immediately after its successful pre-write commit.
         f.failCommit = { false }
-        val expired = f.saved.session.copy(temporary = TemporaryColorState(60_000, 60_000))
+        val expired = f.saved.session.copy(observedAt = f.now)
         f.saved = f.saved.copy(session = expired, pending = DisplayEffect.ENABLE,
             pendingPurpose = OperationPurpose.REACTIVATE, pendingTarget = expired.copy(temporary = null))
         val count = f.writes; val recovered = f.coordinator()
@@ -245,11 +395,15 @@ class TemporaryColorCoordinatorTest {
         recovered.event(SessionEvent.Observe(DeviceActivity.UNLOCKED))
         assertTrue(recovered.state.value.display.ownsGrayscale); assertTrue(f.saved.session.exhausted)
     }
-    @Test fun serviceGoneAccountsOnlyObservedOverrideUseAndClearsBreak() {
+    @Test fun serviceGonePreservesElapsedDeadlineAndClearsOnlyOrdinaryAnchors() {
         val f = Fixture(); val c = f.override(); f.now += 20_000; c.serviceGone()
-        assertEquals(20_000L, f.saved.session.temporary!!.consumedMs)
-        assertNull(f.saved.session.temporary!!.activeSince); assertNull(f.saved.session.breakSince)
+        assertEquals(40_000L, f.saved.session.temporary!!.remaining(f.now))
+        assertEquals(120_000L, f.saved.session.temporary!!.deadlineElapsed); assertNull(f.saved.session.breakSince)
         assertFalse(c.state.value.running)
+        f.now += 10_000
+        assertTrue(c.start(DeviceActivity.UNLOCKED, false))
+        assertEquals(30_000L, f.saved.session.temporary!!.remaining(f.now))
+        assertEquals(120_000L, f.saved.session.temporary!!.deadlineElapsed)
     }
     @Test fun resetFailureDuringOverrideCannotGrantFreshAllowance() {
         val f = Fixture(); val c = f.override()
@@ -272,20 +426,21 @@ class TemporaryColorCoordinatorTest {
         assertFalse(f.saved.session.exhausted); assertNull(f.saved.session.temporary)
         assertFalse(recovered.state.value.running); assertEquals(f.baseline, f.current)
     }
-    @Test fun queuedOffAndUnlockDuringRestorationAreReconciledWithoutChargingGap() {
+    @Test fun queuedOffAndUnlockPreserveElapsedExpiryWithoutInventingABreak() {
         val f = Fixture(); val c = f.exhausted(); val requestAt = f.now
-        f.writeDelayMs = 1000; c.temporaryColor(); f.writeDelayMs = 0
+        f.writeDelayMs = 1000; c.temporaryColor(1); f.writeDelayMs = 0
         assertEquals(requestAt + 3000, f.now)
         c.event(SessionEvent.Observe(DeviceActivity.OFF), requestAt + 1000)
         assertEquals(DeviceActivity.OFF, f.saved.session.activity)
-        assertNull(f.saved.session.temporary!!.activeSince)
+        assertEquals(requestAt + 3000, f.saved.session.temporary!!.activeSince)
         assertEquals(60_000L, f.saved.session.temporary!!.remaining(f.now))
         // Even a long processing gap cannot turn queued boundaries into an earned reset.
         f.now += 900_000
         c.event(SessionEvent.Observe(DeviceActivity.UNLOCKED), requestAt + 2000)
         assertEquals(DeviceActivity.UNLOCKED, f.saved.session.activity)
         assertTrue(f.saved.session.exhausted); assertTrue(f.saved.interrupted)
-        assertEquals(60_000L, f.saved.session.temporary!!.remaining(f.now))
+        assertNull(f.saved.session.temporary)
+        assertTrue(c.state.value.display.ownsGrayscale)
         c.event(SessionEvent.Observe(DeviceActivity.OFF), requestAt + 1000)
         assertEquals(DeviceActivity.UNLOCKED, f.saved.session.activity) // older queued signal cannot undo unlock
         f.now += 1000

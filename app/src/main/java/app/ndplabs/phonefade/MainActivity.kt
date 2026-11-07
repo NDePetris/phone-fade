@@ -32,9 +32,9 @@ class GrayscaleViewModel(application: Application) : AndroidViewModel(applicatio
     fun refresh() = app.submit { app.coordinator.inspectDisplay() }
     fun enable() = app.submit { app.coordinator.manualEnable() }
     fun restore() = app.submit { results.offer(app.coordinator.disable()) }
-    fun temporaryColor() = app.submit {
+    fun temporaryColor(durationMinutes: Int) = app.submit {
         app.coordinator.event(SessionEvent.Observe(app.activity()))
-        app.coordinator.temporaryColor()
+        app.coordinator.temporaryColor(durationMinutes)
     }
     fun configure(config: MonitoringConfig) = app.submit { results.offer(app.coordinator.configure(config)) }
     fun start() {

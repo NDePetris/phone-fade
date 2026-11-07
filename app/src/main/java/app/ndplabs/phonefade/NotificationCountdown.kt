@@ -17,7 +17,7 @@ object NotificationCountdown {
         val cp = state.checkpoint
         val session = cp.session
         val remaining = MonitoringPresentation.remaining(state, now)
-        val counting = state.ready && session.enabled && session.activity == DeviceActivity.UNLOCKED &&
+        val counting = state.ready && session.enabled && (session.temporary != null || session.activity == DeviceActivity.UNLOCKED) &&
             !state.starting && MonitoringPresentation.counting(state)
         val compatible = state.display.readable && state.display.permissionGranted && state.display.canEnable &&
             (session.temporary == null || state.display.current == cp.expectedBaseline)

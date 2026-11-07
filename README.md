@@ -21,19 +21,34 @@ results remain in VALIDATION.md. The user reports PR 3 core temporary-color and
 visual acceptance passing on Pixel 9 Pro; four recovery/safety scenarios remain
 untested (see VALIDATION.md). Native notification countdowns were subsequently
 reported working; the latest wording refinement requires its own physical check.
+PR #22 changes temporary color to elapsed time; this behavior and its picker still
+require their own physical Pixel 9 Pro acceptance.
 
 ## Temporary color and countdowns
 
-When automatic grayscale is verified active, **Use temporary color** restores
-exact original settings and grants the configured unlocked-use duration (default
-5 minutes, independently configurable from 1–120). The override starts only after
-verified restoration and a successful durable completion checkpoint. It leaves
-the ordinary session exhausted and preserves its accumulated usage. Manual
-grayscale and ordinary color do not offer this action; repeated taps cannot extend
-or stack overrides. Changing duration affects the next override.
+When automatic grayscale is verified active, **Use temporary color** now opens a
+duration selector: **5, 15, 30 minutes, 1 hour, or Custom**. The default selection
+is 5 minutes; Custom accepts 1–120 whole minutes and is pre-filled with the saved
+**Default custom duration** setting (also 5 minutes initially). Choosing a duration
+restores exact original settings and grants that amount of **real elapsed time**,
+including while locked, screen-off or idle. A 60-minute choice expires after 60
+elapsed minutes, regardless of phone use. The chosen duration is captured in the durable
+checkpoint before the override starts. The override starts only after verified
+restoration and successful durable completion. It leaves the ordinary session
+exhausted and preserves accumulated usage. Manual grayscale and ordinary color
+do not offer this action; repeated taps cannot extend or stack overrides.
+Changing the saved custom default does not change an active override.
+Neither presets nor Custom silently change that saved default. Cancel makes no
+request; reopening defaults to 5 minutes again. An open picker retains its choice
+and Custom draft across screen recreation, but closes if automatic grayscale is
+no longer eligible (for example, after locking or losing permission).
 
-Short screen-off breaks and interactive lock-screen time pause override use. A
-qualifying continuous screen-off break ends the override at wake and grants a
+This is a selection experience for the existing temporary-color behavior, not
+a separate timed pause or an automatic restart after **Disable and restore**.
+That explicit disable still leaves monitoring off until the user enables it.
+
+Short screen-off breaks and lock-screen time do not pause temporary color. A
+qualifying continuous screen-off break still ends the override at wake and grants a
 fresh ordinary allowance; its counting begins after unlock. No live break timer
 runs. Otherwise override expiry reapplies grayscale through the same controller,
 only if the exact restored display baseline still matches. If expiry is discovered
@@ -48,7 +63,8 @@ Visible countdowns round whole minutes up: a new 2-minute allowance stays at
 Exhaustion shows verified grayscale, pending application/unlock, or attention;
 never a zero/negative countdown. Seconds refresh only while the UI is resumed.
 Notifications keep rounded-up, correctly pluralized minutes above one minute.
-During the final minute of active unlocked use, Android's native notification
+During the final minute of ordinary unlocked use or the elapsed temporary interval,
+Android's native notification
 chronometer shows seconds in its standard header; **Offramp Fade** stays the title.
 The body uses `Color: X minutes remaining` or `Temporary color: X minutes remaining`
 with correct plurals, changing to `Color: Less than a minute remaining` or
@@ -56,10 +72,11 @@ with correct plurals, changing to `Color: Less than a minute remaining` or
 Expanded notifications show the same compact status. The service publishes once
 at the final-minute boundary and at existing checkpoints/state changes/expiry; System UI
 supplies the ticks without per-second service wakeups or notification rebuilds.
-A locked/off session shows static time, such as `Color: 0:32 remaining · Paused`
-(or the temporary-color label), with no live chronometer;
-unlock projects a new end from the remaining confirmed usage. Both ordinary
-allowance and temporary color use their own monotonic engine deadlines.
+A locked/off ordinary session shows static time, such as `Color: 0:32 remaining · Paused`,
+with no live chronometer; unlock projects a new end from remaining confirmed usage.
+Temporary color continues counting, including the final-minute chronometer while
+locked/off, against its unchanged monotonic deadline. Expired temporary color shows
+honest pending-unlock/attention messaging rather than a paused or restarted timer.
 
 Native display has limits: Android controls placement and timer formatting, may
 briefly show zero (or negative overdue time) if the expiry callback is delayed,
@@ -77,16 +94,22 @@ second rounding; the engine deadline is unchanged. The existing single timer add
 at most one final-minute boundary wake per active segment. No polling fallback,
 custom notification layout, exact alarm, wake lock, or permission was introduced.
 
-Checkpoint version 2 adds override usage, its captured duration, the exact expected
-baseline (including absent keys), and pending operation purpose/target. Version 1
-loads with a 5-minute default and no override; prior configuration, confirmed
-usage, exhaustion and pending operations are preserved. The display recovery
+Checkpoint version 3 retains the v2 field layout, with the temporary anchor and
+fixed usage offset defining an immutable elapsedRealtime deadline for the recorded
+boot. V2 unlocked-use intervals migrate their confirmed remainder at the last
+observation to elapsed time from that observation; time since that checkpoint
+counts, so an older interval may already be expired when opened. Earlier unknown
+usage is not reconstructed, and pending entry remains unarmed until restoration
+completes. Version 1 loads with a 5-minute Custom default and no override; prior
+configuration, ordinary confirmed usage, exhaustion and pending operations are
+preserved. The display recovery
 journal remains version 1 in `grayscale_recovery`, separate from monitoring.
 V1 already persisted reset targets before restoration; migration cannot recreate
 prior consumption that V1 never recorded. Corrupt or unknown checkpoints stop
-monitoring and retain controller/manual recovery. Downgrading to a v1-only build
-with a v2 checkpoint is unsupported; disable and restore first, and do not clear
-app data as a workaround. The independent display recovery format is unchanged.
+monitoring and retain controller/manual recovery. Downgrading to a v1/v2-only build
+with a v3 checkpoint is unsupported; disable and restore first, and do not clear
+app data as a workaround. Older builds reject the unknown monitoring format;
+the independent display recovery format is unchanged.
 
 Override entry closes the existing owned display operation by restoring and
 verifying its original snapshot, then clearing that journal. During temporary
@@ -97,12 +120,14 @@ settings/journal before resuming. Restoration or journal-clear failure does not
 start an override. Successful display mutation followed by failed monitoring
 persistence surfaces attention instead of a success claim. Screen signals captured
 during synchronous display writes are conservatively reconciled in capture order,
-without charging the unobserved gap or inventing a qualifying break.
+without charging unknown ordinary usage or inventing a qualifying break. Temporary
+color continues against its deadline through that gap.
 
-Ordinary process recovery keeps confirmed override usage, discards timing anchors,
-and does not charge unknown downtime or infer a break across it. Uncheckpointed
-usage may be lost, extending the remainder (normally under a minute, potentially
-more with delayed scheduling). Reboot/unknown boot identity and confirmed user
+Ordinary process/service recovery preserves the exact temporary deadline in the
+same boot: downtime counts, and recreation never restarts or extends the interval.
+Only ordinary unlocked-use and break anchors are discarded; unknown ordinary use
+is not charged and no qualifying break is inferred across downtime. Wall-clock
+edits, timezones and DST do not change elapsed-time expiry. Reboot/unknown boot identity and confirmed user
 stops cancel the override/session, with best-effort recovery and no automatic
 monitoring restart. Android cannot guarantee timely expiry, service restart,
 force-stop restoration, or boot restoration. Read-back is not physical acceptance.
@@ -117,7 +142,8 @@ the same canonical family symbol with adaptive color and monochrome themed layer
 Notification template/cadence, display operations and monitoring semantics are unchanged.
 
 Ordinary color and temporary-color countdowns keep **Disable and restore** outlined.
-Automatic grayscale prioritizes eligible **Use temporary color**; manual grayscale
+Automatic grayscale prioritizes eligible **Use temporary color**, which opens the
+duration selector instead of immediately beginning an override; manual grayscale
 prioritizes **Restore original settings** and explicitly says automatic breaks are
 off. Prior reconciliation appears below the dominant readout as “Some screen time
 may not have been counted,” preserving the existing interruption flag.
@@ -174,8 +200,8 @@ authorization before active display-state tests or destructive recovery steps.
 
 Grant the secure-settings permission below, choose settings, tap **Save settings**,
 then **Enable monitoring**. Defaults: 10 minutes of color, 5 minutes for
-a reset. All three timing inputs accept whole minutes from 1 to 120; temporary
-color defaults to 5 minutes. Notification permission
+a reset. The two baseline timing inputs and the saved Custom-duration prefill
+accept whole minutes from 1 to 120; Custom defaults to 5 minutes. Notification permission
 is requested on Android 13+; denying it still permits monitoring, but the service
 notice appears in Android's Active apps list rather than the notification drawer.
 Blocked notifications/channels are also reported in the app on resume.
@@ -505,6 +531,54 @@ the physical screen: screenshots need not capture the display transform.
 Exclusions, analytics, tiles, widgets, daily budgets,
 schedules, cloud sync, and automatic monitoring at boot remain out of scope.
 
+## Issue #20 duration-picker Pixel 9 Pro acceptance (pending)
+
+Record the tested commit, Android OS/build fingerprint, timing values and actual
+display observations. Protect the exact original values and key presence using
+the preflight snapshot above. Historical temporary-color acceptance does not
+validate this picker. Unit tests and instrumentation compilation do not establish
+physical acceptance.
+
+- [ ] From automatic grayscale, open the picker: 5 minutes is selected. Set a
+  saved Custom default other than 5; Custom pre-fills it. Cancel/reopen returns
+  to 5; neither preset nor Custom confirmation changes the saved default.
+- [ ] Exercise 5 / 15 / 30 / 60 and Custom 1 / 120 minutes. Invalid Custom values
+  (empty, 0, 121, fractional and overflowing numbers) block confirmation. Verify
+  chosen countdown and real color restoration; unchanged settings read-back alone
+  is insufficient. Verify elapsed duration, including locked, screen-off and idle
+  time. A 60-minute choice expires 60 elapsed minutes after verified entry.
+- [ ] Rotate/recreate with a preset and with a partially edited Custom value;
+  preserve the open dialog, choice and draft without starting color. Back/Cancel
+  closes it. Lock while open: no stale confirmation on unlock. Manual grayscale,
+  ordinary color, active override and attention do not offer the picker.
+- [ ] Verify TalkBack radio labels/selection/group navigation, focus into and out
+  of the dialog, error announcements, keyboard access, 48dp targets, light/dark,
+  largest font, landscape, and Custom field/confirmation reachability with IME.
+- [ ] Confirm short screen-off and lock-screen intervals keep temporary time
+  advancing while ordinary allowance still pauses; a qualifying
+  continuous break resets the main session at wake before unlock. Background the
+  app and verify selected countdown, final-minute notification and physical
+  grayscale return. Saved-default edits and repeated requests cannot extend it.
+- [ ] Recreate the process/service before and after the deadline: the original
+  deadline survives, including downtime, without inferring a break. Change wall
+  time/timezone: countdown uses the same elapsed deadline. In deep idle, record
+  actual callback/effect delay; wake reconciles safely without claiming on-time
+  grayscale. A qualifying break at wake still grants the full ordinary allowance.
+- [ ] Disable during the override and after reactivation; confirm exact original
+  values/absence and physical color. Check denied/blocked notifications honestly
+  report visibility limits without changing the chosen allowance.
+- [ ] With the external snapshot protected and explicit approval for destructive
+  steps, test external correction/permission loss, process interruption during
+  restore/reactivation, force-stop, Active apps Stop and reboot. Retain recovery
+  on conflict/failure; do not promise prompt restoration or auto-enable at boot.
+
+Deterministic persistence/provider failure injection is covered by unit tests;
+those tests do not claim Android storage durability or physical failure acceptance.
+To compile the native UI tests without running them, add `assembleDebugAndroidTest`
+to the Build and test command. Running instrumentation on the installed product
+can launch its Application and recovery code; use an authorized, snapshot-protected
+device session or a separately isolated UI harness.
+
 ## PR 3 Pixel 9 Pro acceptance reference
 
 Core temporary-color and visual tests were reported successful by the user on
@@ -529,8 +603,9 @@ uninstall, or revoking permission against an active grayscale state.
   UI. Background the activity; the native final-minute notification counts seconds and expiry still occurs.
 - [ ] Exhaust automatically, request 1-minute temporary color, visually confirm
   color and exact restored values/absence; ordinary allowance stays exhausted.
-- [ ] Use 20 seconds, screen off 20 seconds, wait on lock screen, unlock: only the
-  remaining override usage counts. Repeated taps/configuration edits do not extend it.
+- [ ] Use 20 seconds, screen off 20 seconds, wait on lock screen, unlock: temporary
+  color now counts all elapsed time under PR #22 and keeps its original deadline;
+  repeated taps/configuration edits do not extend it.
 - [ ] Expire while unlocked: grayscale is verified active with the original
   baseline captured anew. Disable: restore exact values/absence and physical color.
 - [ ] Take a qualifying uninterrupted break during the override. Wake without
@@ -539,7 +614,7 @@ uninstall, or revoking permission against an active grayscale state.
 - [ ] Test PIN, fingerprint, face unlock, and no-keyguard wake. If expiry coincides
   with locking, reactivation waits for unlock; qualifying wake takes precedence.
 - [ ] Terminate the process normally during override and reactivation; inspect
-  retained confirmed usage, interruption label, journal, and recovery. Exercise
+  retained elapsed deadline, ordinary confirmed usage, interruption label, journal, and recovery. Exercise
   interrupted restoration/reactivation only with protected external snapshot.
 - [ ] Separately test force-stop, Active apps Stop, service restart, and reboot.
   No prompt restart/restoration is guaranteed; reopening exposes recovery. Boot
@@ -558,8 +633,9 @@ regressions, not claims of physically reproduced Android failures.
   Pixel OS/build: correctly pluralized minutes above one minute, native seconds
   during the final minute for ordinary color and temporary color, and no stale
   “Less than a minute remaining” alongside a running countdown.
-- [ ] Lock/turn off in the final minute: timer is removed, fixed seconds do not
-  decrease. Unlock: only unlocked-use remainder resumes; short breaks retain usage.
+- [ ] Lock/turn off in the final minute: ordinary timer is removed and its fixed
+  seconds do not decrease. Temporary color continues counting against its original
+  elapsed deadline. Unlock: only ordinary unlocked-use remainder resumes; short breaks retain ordinary usage.
   Qualifying wake shows a fresh allowance waiting for unlock.
 - [ ] Change wall-clock time during the final minute. The rendered end is refreshed,
   while allowance consumption and logical expiry remain based on elapsedRealtime.

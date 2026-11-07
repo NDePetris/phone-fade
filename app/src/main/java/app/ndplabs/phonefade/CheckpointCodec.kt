@@ -11,7 +11,7 @@ internal object CheckpointCodec {
     fun encode(value: MonitoringCheckpoint): String {
         val bytes = ByteArrayOutputStream()
         DataOutputStream(bytes).use { out ->
-            out.writeInt(2)
+            out.writeInt(3)
             out.writeInt(value.config.allowanceMinutes)
             out.writeInt(value.config.resetMinutes)
             out.writeInt(value.bootCount ?: -1)
@@ -43,7 +43,7 @@ internal object CheckpointCodec {
 
     fun decode(raw: String): MonitoringCheckpoint = DataInputStream(ByteArrayInputStream(Base64.getDecoder().decode(raw))).use { input ->
         val version = input.readInt()
-        check(version in 1..2) { "Unknown monitoring checkpoint version" }
+        check(version in 1..3) { "Unknown monitoring checkpoint version" }
         var config = MonitoringConfig(input.readInt(), input.readInt())
         val boot = input.readInt().also { check(it >= -1) }.takeIf { it >= 0 }
         fun anchor(): Long? = input.readLong().also { check(it >= -1) }.takeIf { it >= 0 }
@@ -59,7 +59,7 @@ internal object CheckpointCodec {
         var purpose: OperationPurpose? = null
         var target: SessionState? = null
         var baseline: ColorSettings? = null
-        if (version == 2) {
+        if (version >= 2) {
             config = config.copy(temporaryMinutes = input.readInt())
             session = session.copy(temporary = readTemporary(input))
             purpose = input.readUTF().takeIf { it.isNotEmpty() }?.let(OperationPurpose::valueOf)
@@ -79,8 +79,8 @@ internal object CheckpointCodec {
                 else if (session.enabled) OperationPurpose.RESET else OperationPurpose.DISABLE
             target = session
         }
-        validate(session)
-        target?.let(::validate)
+        validate(session, version)
+        target?.let { validate(it, version) }
         check(baseline == null || (baseline.enabled in listOf(null, "0") &&
             (baseline.mode == null || baseline.mode.matches(Regex("-?[0-9]+")))))
         check((session.temporary == null && purpose !in listOf(OperationPurpose.TEMPORARY_COLOR, OperationPurpose.REACTIVATE)) || baseline != null)
@@ -90,11 +90,29 @@ internal object CheckpointCodec {
                 target.consumedMs == session.consumedMs)
         }
         if (purpose == OperationPurpose.REACTIVATE) {
-            check(session.temporary != null && session.temporary.consumedMs >= session.temporary.durationMs)
+            check(session.temporary != null && session.temporary.remaining(session.observedAt) == 0L)
             check(target != null && target.enabled && target.exhausted && target.temporary == null &&
                 target.consumedMs == session.consumedMs)
         }
         check(input.available() == 0) { "Trailing checkpoint data" }
+        if (version == 2) {
+            // V2 counted unlocked use. Preserve its confirmed remainder at the last
+            // observation and count elapsed time from there; never infer earlier use.
+            // Pending entry is unarmed until verified restoration + durable completion.
+            fun migrate(value: SessionState) = value.copy(temporary = value.temporary?.let {
+                val consumed = it.consumedAt(value.observedAt)
+                check(consumed in 0..Long.MAX_VALUE / 2) { "Invalid migrated temporary usage" }
+                it.copy(consumedMs = consumed, activeSince = value.observedAt)
+            })
+            session = migrate(session)
+            if (purpose != OperationPurpose.TEMPORARY_COLOR) target = target?.let(::migrate)
+        }
+        if (version == 3) {
+            check(session.temporary == null || session.temporary.activeSince != null) { "Missing elapsed interval anchor" }
+            target?.temporary?.let {
+                check(if (purpose == OperationPurpose.TEMPORARY_COLOR) it.activeSince == null else it.activeSince != null)
+            }
+        }
         MonitoringCheckpoint(config, session, boot, pending, attention, interrupted, purpose, target, baseline)
     }
 
@@ -126,14 +144,15 @@ internal object CheckpointCodec {
             DeviceActivity.valueOf(input.readUTF()), anchor(), anchor(), input.readBoolean(), input.readLong(), input.readLong(), readTemporary(input))
     }
 
-    private fun validate(session: SessionState) = with(session) {
+    private fun validate(session: SessionState, version: Int) = with(session) {
         check(consumedMs in 0..Long.MAX_VALUE / 2 && generation >= 0 && observedAt >= 0)
         check(activeSince == null || (enabled && hasSession && activity == DeviceActivity.UNLOCKED && activeSince <= observedAt))
         check(breakSince == null || (enabled && activity == DeviceActivity.OFF && breakSince <= observedAt))
         check(!exhausted || hasSession)
         temporary?.let {
             check(enabled && hasSession && exhausted && activeSince == null)
-            check(it.activeSince == null || (activity == DeviceActivity.UNLOCKED && it.activeSince <= observedAt))
+            check(it.activeSince == null || ((version >= 3 || activity == DeviceActivity.UNLOCKED) && it.activeSince <= observedAt))
+            check(it.deadlineElapsed == null || it.deadlineElapsed!! >= it.activeSince!!)
         }
     }
 }

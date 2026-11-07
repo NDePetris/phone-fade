@@ -59,7 +59,7 @@ object QuietRoadPresentation {
             OperationPurpose.TEMPORARY_COLOR, OperationPurpose.RESET, OperationPurpose.DISABLE -> "Restoring original settings…"
             else -> "Applying grayscale…"
         }, "Wait for settings verification to complete.", secondary = recovery)
-        val status = when (cp.session.activity) {
+        val status = if (cp.session.temporary != null) "Temporary color" else when (cp.session.activity) {
             DeviceActivity.LOCKED -> "Waiting for unlock"
             DeviceActivity.OFF -> "Usage paused"
             DeviceActivity.UNLOCKED -> "Monitoring active"
@@ -74,7 +74,7 @@ object QuietRoadPresentation {
             if (temporary) "Temporary color has ended. Your ordinary allowance remains exhausted."
             else "Your color allowance is used up.", secondary = recovery)
         val guidance = when {
-            temporary -> "Counts only while unlocked. This doesn't reset your color allowance."
+            temporary -> "Runs while locked or screen-off. Returns to monitoring after this time. A qualifying break still resets your color allowance."
             cp.session.activity == DeviceActivity.LOCKED -> "Unlock to resume counting. Short breaks keep your remaining time."
             cp.session.activity == DeviceActivity.OFF -> "Counting resumes after unlock. Short breaks keep your remaining time."
             else -> "Counts only while unlocked. Short breaks keep your remaining time."
