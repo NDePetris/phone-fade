@@ -90,6 +90,24 @@ class TemporaryColorCoordinatorTest {
         assertEquals(40_000L, f.saved.session.temporary!!.remaining(f.now)); assertEquals(count, f.writes)
         assertTrue(f.saved.session.exhausted)
     }
+    @Test fun pickerDurationIsPersistedAndSurvivesConfigurationChanges() {
+        val f = Fixture(); val c = f.exhausted()
+        c.temporaryColor(60)
+        assertEquals(3_600_000L, f.saved.session.temporary!!.durationMs)
+        assertEquals(f.baseline, f.current)
+        c.configure(MonitoringConfig(1, 2, 5))
+        assertEquals(3_600_000L, f.saved.session.temporary!!.durationMs)
+        f.now += 20_000
+        c.event(SessionEvent.Deadline(f.saved.session.generation))
+        assertEquals(3_580_000L, f.saved.session.temporary!!.remaining(f.now))
+    }
+    @Test fun invalidPickerDurationCannotRestoreOrWrite() {
+        val f = Fixture(); val c = f.exhausted(); val writes = f.writes
+        for (minutes in listOf(0, 121, Int.MAX_VALUE)) c.temporaryColor(minutes)
+        assertNull(f.saved.session.temporary)
+        assertTrue(f.saved.session.exhausted)
+        assertEquals(writes, f.writes)
+    }
     @Test fun shortBreakPausesOverrideAndQualifyingWakeResetsBeforeUnlock() {
         val f = Fixture(); val c = f.override(); f.now += 20_000
         c.event(SessionEvent.Observe(DeviceActivity.OFF)); f.now += 20_000
