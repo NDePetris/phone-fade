@@ -48,7 +48,7 @@ class QuietRoadPresentationTest {
             session = session.copy(exhausted = true, temporary = TemporaryColorState(300_000, consumedMs = 268_000))))
         val hero = QuietRoadPresentation.hero(temporary, 0)
         assertEquals("Temporary color remaining", hero.title); assertEquals("0:32", hero.countdown)
-        assertEquals("Counts only while unlocked. This doesn't reset your color allowance.", hero.guidance)
+        assertEquals("Runs while locked or screen-off. Returns to monitoring after this time. A qualifying break still resets your color allowance.", hero.guidance)
         assertNull(hero.primary)
         assertEquals(HeroAction.DISABLE, hero.secondary)
     }

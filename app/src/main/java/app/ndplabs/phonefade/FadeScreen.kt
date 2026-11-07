@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -179,7 +180,7 @@ internal fun StatusHero(state: MonitoringState, now: Long, restore: () -> Unit, 
                     Button(onClick = click(action), enabled = enabled(action), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                         Text(action.label)
                     }
-                    if (action == HeroAction.TEMPORARY) Text("Choose 5, 15, 30 minutes, 1 hour, or custom. Only unlocked use counts.",
+                    if (action == HeroAction.TEMPORARY) Text("Choose 5, 15, 30 minutes, 1 hour, or custom. Temporary color uses elapsed time.",
                         style = MaterialTheme.typography.bodySmall)
                 }
                 hero.secondary?.let { action ->
@@ -205,27 +206,29 @@ internal fun StatusHero(state: MonitoringState, now: Long, restore: () -> Unit, 
 @Composable
 internal fun TemporaryColorPicker(defaultCustomMinutes: Int, onDismiss: () -> Unit, onConfirm: (Int) -> Unit) {
     var selected by rememberSaveable { mutableIntStateOf(5) }
-    var custom by rememberSaveable { mutableStateOf(defaultCustomMinutes.toString()) }
+    var custom by rememberSaveable { mutableStateOf(defaultCustomMinutes.coerceIn(1, 120).toString()) }
     val duration = if (selected == 0) custom.toIntOrNull() else selected
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Temporary color duration") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Only unlocked use counts. Screen-off and locked time pauses the timer.",
+                Text("The timer continues while locked or screen-off. Returns to monitoring after this time. A qualifying break still resets the main session.",
                     style = MaterialTheme.typography.bodyMedium)
-                listOf(5, 15, 30, 60, 0).forEach { option ->
-                    Row(
-                        Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                            .selectable(selected == option, role = Role.RadioButton, onClick = { selected = option }),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(selected = selected == option, onClick = null)
-                        Text(when (option) {
-                            0 -> "Custom"
-                            60 -> "1 hour"
-                            else -> "$option minutes"
-                        }, modifier = Modifier.padding(start = 8.dp))
+                Column(Modifier.selectableGroup()) {
+                    listOf(5, 15, 30, 60, 0).forEach { option ->
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                                .selectable(selected == option, role = Role.RadioButton, onClick = { selected = option }),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = selected == option, onClick = null)
+                            Text(when (option) {
+                                0 -> "Custom"
+                                60 -> "1 hour"
+                                else -> "$option minutes"
+                            }, modifier = Modifier.padding(start = 8.dp))
+                        }
                     }
                 }
                 if (selected == 0) {

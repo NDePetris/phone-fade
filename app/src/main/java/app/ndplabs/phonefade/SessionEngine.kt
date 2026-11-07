@@ -11,7 +11,11 @@ enum class DeviceActivity { OFF, LOCKED, UNLOCKED }
 enum class DisplayEffect { ENABLE, RESTORE }
 enum class OperationPurpose { ACTIVATE, RESET, DISABLE, TEMPORARY_COLOR, REACTIVATE }
 
+/** Once durably armed, the anchor never moves, including across process/service recovery.
+ * consumedMs is a fixed offset for migrated v2 usage, not an unlocked-use counter.
+ * A null anchor is reserved for an entry operation that has not completed. */
 data class TemporaryColorState(val durationMs: Long, val consumedMs: Long = 0, val activeSince: Long? = null) {
+    val deadlineElapsed get() = activeSince?.let { it + (durationMs - consumedMs).coerceAtLeast(0) }
     fun consumedAt(now: Long) = consumedMs + (activeSince?.let { (now - it).coerceAtLeast(0) } ?: 0)
     fun remaining(now: Long) = (durationMs - consumedAt(now)).coerceAtLeast(0)
 }
@@ -34,7 +38,10 @@ data class SessionState(
         if (exhausted) 0 else (config.allowanceMs - consumedAt(now)).coerceAtLeast(0)
     fun deadline(config: MonitoringConfig): Long? {
         if (!enabled) return null
-        temporary?.let { return it.activeSince?.let { anchor -> anchor + (it.durationMs - it.consumedMs).coerceAtLeast(0) } }
+        temporary?.let {
+            // An observed expired interval waits for unlock/reset, without a zero-delay timer loop.
+            return if (activity != DeviceActivity.UNLOCKED && it.remaining(observedAt) == 0L) null else it.deadlineElapsed
+        }
         return if (!exhausted && activeSince != null) activeSince + (config.allowanceMs - consumedMs).coerceAtLeast(0) else null
     }
 }
@@ -69,12 +76,10 @@ object SessionEngine {
         if (event is SessionEvent.Recover) {
             // Never infer unlocked use or a continuous break during process downtime.
             val recovered = old.copy(activeSince = null, breakSince = null, activity = DeviceActivity.LOCKED,
-                temporary = old.temporary?.copy(activeSince = null),
                 observedAt = now, generation = old.generation + 1)
             return reduce(recovered, SessionEvent.Observe(event.activity), now, config)
         }
         var state = old.copy(consumedMs = old.consumedAt(now), activeSince = null,
-            temporary = old.temporary?.let { it.copy(consumedMs = it.consumedAt(now), activeSince = null) },
             observedAt = now, generation = old.generation + 1)
         var effect: DisplayEffect? = null
         var purpose: OperationPurpose? = null
@@ -111,7 +116,7 @@ object SessionEngine {
                     state = state.copy(temporary = null)
                     effect = DisplayEffect.ENABLE
                     purpose = OperationPurpose.REACTIVATE
-                } else state = state.copy(temporary = temporary.copy(activeSince = now))
+                }
             } else {
                 state = state.copy(activeSince = now)
                 if (state.exhausted && (!old.exhausted || old.activity != DeviceActivity.UNLOCKED)) {

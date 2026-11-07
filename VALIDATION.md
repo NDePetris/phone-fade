@@ -1,37 +1,112 @@
 # Offramp Fade validation
 
-## Temporary-color duration picker — November 7, 2026 (PR validation pending)
+## Elapsed temporary color — November 7, 2026 (PR #22 correction)
 
-**Scope:** Replace the immediate temporary-color action with a picker for 5, 15,
-30, 60, or Custom (1–120) minutes of unlocked use. Selection flows through the
-existing coordinator/reducer and saves the chosen duration to the existing v2
-checkpoint. Saved settings now describe the Custom default; the permission,
-notification timing, grayscale controller, restoration journal, reset semantics,
-and automatic startup behavior are unchanged. Related: GitHub #20; boot startup
-is separately tracked as #21.
+The owner's confirmed issue #20 decision supersedes the unlocked-use temporary
+timer described in the initial review below. Work continues on `codex/review-pr22`
+from PR head `a61194b`, preserving the uncommitted review corrections. The existing
+PR branch is updated with the reviewed implementation; no merge or release.
 
-### Automated checks
+### Implementation and preserved boundaries
 
-New unit cases exercise per-request preset and custom durations, invalid values,
-durability across configuration changes, and existing expiry/accounting behavior.
-Native Compose instrumentation coverage has been updated to select a preset and
-validate the Custom field. **These new tests have not been executed in this
-environment.** Run the JDK 17 AGENTS.md build, unit-test, check and lint tasks,
-then verify packaged permissions remain unchanged and no Internet permission is
-present. A passing build is not physical display acceptance.
+- The existing temporary state now keeps its elapsedRealtime anchor unchanged
+  across unlocked, locked, screen-off, idle and same-boot process/service recovery.
+  Its captured duration and fixed migrated-usage offset determine the original
+  deadline. Restoration must be verified and the completion checkpoint must commit
+  before an active start is published. Failure retains pending recovery and never
+  reports a started interval. Pending entry remains unarmed until completion.
+- Checkpoint **v3 uses the same v2 field layout**, distinguishing continuous elapsed
+  semantics. Frozen v1/v2 fixtures test migration: v1 remains ordinary-only; v2's
+  confirmed temporary remainder at its last observation becomes elapsed time from
+  that observation, including subsequent downtime. No earlier unknown usage is
+  invented. Configuration, ordinary usage/exhaustion, exact baseline/absent keys
+  and pending operation targets are retained. An older interval can already be
+  expired on upgrade. V3 rejects missing running anchors; unknown/corrupt records
+  retain the existing attention/manual-recovery path. Older builds reject v3;
+  restore/disable before downgrade, never clear data to work around it.
+- No timer mechanism was added. The service uses its existing scheduler against
+  the same deadline, including while locked/off. Once expiry is observed while
+  locked/off, that past deadline stops scheduling; guarded reapplication waits for
+  unlock. A qualifying continuous screen-off break still wins at wake, ending
+  temporary color and granting a fresh ordinary allowance before unlock.
+- Ordinary unlocked-use accounting, unknown-downtime policy and break detection
+  are unchanged. Manual controls, exact settings writer/recovery journal, external
+  conflict/permission guards, disable, no-stacking, reboot/user-stop cancellation
+  and no automatic boot startup are preserved. No new dependency, service,
+  permission, alarm, WorkManager job, network access or unrelated design change.
+- Only temporary-color messaging/countdown behavior changes: picker explains
+  locked/off continuation; the temporary notification keeps counting while locked
+  or off, with the existing native final-minute chronometer. Ordinary paused
+  notifications remain static. Wall-clock/timezone/DST edits do not alter engine
+  expiry; Notification.when remains a presentation projection. Late unlocked expiry
+  reports applying grayscale; locked/off expiry reports pending unlock.
 
-### Manual device tests and risks
+### Automated checks actually executed
 
-**Not performed.** No device, system color setting, grant, installed APK or
-existing recovery journal was modified. Before considering this change accepted,
-test each preset and Custom, real locked/unlocked accounting, shorter and qualifying
-screen-off breaks, notification countdowns, repeated requests, permission and
-external-correction conflicts, restoration/readback versus actual color, process
-recreation, and failed persistence on an authorized Pixel 9 Pro session. Protect
-the exact original external-settings snapshot first. Reboot and user stop still
-cancel monitoring per existing policy; exact restart after those events is not
-part of this feature.
+JDK 17, pinned wrapper, SDK Platform 36 and Build Tools 35.0.0:
 
+```powershell
+$env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot'
+./gradlew.bat assembleDebug assembleDebugAndroidTest testDebugUnitTest testReleaseUnitTest check lintDebug lintRelease --no-watch-fs --console=plain
+git diff --check
+```
+
+- **Passed:** debug build, instrumentation APK assembly, debug/release unit tests,
+  `check`, `lintDebug` and `lintRelease`. **219 tests per variant, 438 executions,
+  zero failures/errors.** Both lint reports: **No issues found**. Whitespace checks
+  passed. Packaged APK permissions match the existing six-permission set exactly
+  (including AndroidX's app-local receiver permission), with **no Internet**.
+- The first focused run had four old temporary-pause copy/assertion failures;
+  they were updated for the approved semantics. Ordinary pause/reset expectations
+  remain. Final checks pass without tooling warnings. Gradle used approved access
+  to its existing external cache/SDK. No toolchain/dependency upgrade was made.
+
+Regression coverage includes all selected durations and invalid bounds; exact elapsed boundaries in
+all device states; short/qualifying breaks; unchanged recovery deadlines; late,
+stale and duplicate callbacks; disable/no-stacking; reboot/unknown boot/user stop;
+permissions/conflicts; each interrupted restoration write; intent/completion
+storage failures; v1/v2 migration and v3 corruption; temporary notification
+continuation/expiry and wall-clock projection. Existing ordinary session/reset
+and display-controller tests run in both variants.
+
+### Instrumentation compiled versus executed
+
+The production instrumentation APK is compiled, including the preserved picker
+selection, invalid Custom, cancellation, recreation and eligibility-loss cases,
+plus elapsed countdown/expiry messaging while locked. **Not executed:** `adb
+devices -l` lists no connected target, and `emulator -list-avds` lists no configured
+AVD. No device or installed app/settings/grant/recovery journal was modified. This
+does not satisfy issue #20's runtime UI or physical acceptance gate.
+
+### Physical Pixel 9 Pro acceptance and remaining risk
+
+**Not performed; no current model/OS/build claim.** Use the updated
+[issue #20 checklist](README.md#issue-20-duration-picker-pixel-9-pro-acceptance-pending):
+record commit/build fingerprint and external original-settings snapshot; test all
+presets and Custom, real elapsed lock/off/idle time, process/service recreation,
+short versus qualifying breaks, notifications and physical display restoration/
+reactivation. Include TalkBack, large text/IME/rotation, disable, conflicts and
+authorized interruption/reboot/user-stop scenarios. Execute the native UI suite on
+an authorized target; running it against the real app can start Application/recovery.
+
+Android can defer callbacks during deep sleep, service loss or execution limits.
+The deadline remains elapsed-time correct, but actual grayscale may be delayed
+until the next permitted observation/unlock; no exact alarm/wake lock is added.
+No unknown downtime is charged to ordinary use or inferred as a qualifying break.
+Reboot/unknown boot and confirmed user stop cancel rather than restart monitoring.
+Read-back is not physical display evidence. Protect the external snapshot and
+obtain explicit approval before destructive active-state testing. The four
+historical recovery/safety acceptance gaps remain pending.
+
+### Preserved initial review corrections
+
+The initial unlocked-use review found three P2 gaps: an implicit saved-duration
+fallback, missing radio-group semantics, and incomplete picker/recovery regressions.
+All three corrections remain: requests require explicit minutes, options form a
+native selectable group with clear guidance, and expanded failure/recreation tests
+are retained and adapted to elapsed time. The initial review ran 208 tests per
+variant (416 executions) and compiled instrumentation; it performed no physical
+acceptance. Those results precede, and do not validate, the elapsed-time change.
 
 ## Focused Quiet Road refinement — October 14, 2026
 

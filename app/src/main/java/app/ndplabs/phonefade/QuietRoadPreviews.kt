@@ -40,3 +40,12 @@ class QuietRoadPreviewStates : PreviewParameterProvider<MonitoringState> {
 private fun QuietRoadScreenPreview(@PreviewParameter(QuietRoadPreviewStates::class) state: MonitoringState) {
     FadeTheme { FadeScreen(state, true, restore = {}, manualEnable = {}, temporaryColor = { _ -> }, configure = {}, start = {}) }
 }
+
+@Preview(name = "Temporary color picker • light", widthDp = 393, heightDp = 852)
+@Preview(name = "Temporary color picker • dark", widthDp = 393, heightDp = 852,
+    uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Preview(name = "Temporary color picker • large text", widthDp = 320, heightDp = 720, fontScale = 2f)
+@Composable
+private fun TemporaryColorPickerPreview() {
+    FadeTheme { TemporaryColorPicker(defaultCustomMinutes = 17, onDismiss = {}, onConfirm = {}) }
+}

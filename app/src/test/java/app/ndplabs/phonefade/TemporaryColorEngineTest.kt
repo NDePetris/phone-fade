@@ -13,17 +13,17 @@ class TemporaryColorEngineTest {
         // Coordinator starts the anchor only after verified restoration + durable completion.
         state = state.copy(temporary = state.temporary!!.copy(activeSince = 0))
     }
-    @Test fun countsUnlockedTimeWithoutResettingOrdinarySession() {
+    @Test fun countsElapsedTimeWithoutResettingOrdinarySession() {
         begin(); event(SessionEvent.Deadline(state.generation), 20_000)
         assertEquals(40_000L, state.temporary!!.remaining(20_000)); assertEquals(60_000L, state.consumedMs)
         assertTrue(state.exhausted)
     }
-    @Test fun shortOffAndLockScreenPauseThenResume() {
+    @Test fun shortOffAndLockScreenKeepTheOriginalDeadline() {
         begin(); event(SessionEvent.Observe(DeviceActivity.OFF), 20_000)
         event(SessionEvent.Observe(DeviceActivity.LOCKED), 30_000)
-        assertEquals(40_000L, state.temporary!!.remaining(300_000)); assertNull(state.deadline(config))
-        event(SessionEvent.Observe(DeviceActivity.UNLOCKED), 300_000)
-        assertEquals(340_000L, state.deadline(config)); assertTrue(state.exhausted)
+        assertEquals(10_000L, state.temporary!!.remaining(50_000)); assertEquals(60_000L, state.deadline(config))
+        event(SessionEvent.Observe(DeviceActivity.UNLOCKED), 50_000)
+        assertEquals(60_000L, state.deadline(config)); assertTrue(state.exhausted)
     }
     @Test fun qualifyingWakeEndsOverrideBeforeUnlock() {
         begin(); event(SessionEvent.Observe(DeviceActivity.OFF), 20_000)
@@ -82,11 +82,44 @@ class TemporaryColorEngineTest {
             assertEquals(before, state)
         }
     }
-    @Test fun recoveryDoesNotChargeDowntimeOrInferBreak() {
+    @Test fun recoveryCountsElapsedDowntimeWithoutInferringAnOrdinaryBreak() {
         begin(); event(SessionEvent.Deadline(state.generation), 20_000)
-        event(SessionEvent.Recover(DeviceActivity.UNLOCKED), 900_000)
-        assertEquals(40_000L, state.temporary!!.remaining(900_000)); assertTrue(state.exhausted)
+        assertEquals(OperationPurpose.REACTIVATE, event(SessionEvent.Recover(DeviceActivity.UNLOCKED), 900_000).purpose)
+        assertNull(state.temporary); assertTrue(state.exhausted)
+        assertEquals(60_000L, state.consumedMs)
         assertNull(state.breakSince)
+    }
+    @Test fun everyDurationExpiresAtTheExactElapsedBoundaryInEveryDeviceState() {
+        for (minutes in listOf(1, 5, 15, 30, 60, 90, 120)) for (activity in DeviceActivity.entries) {
+            state = SessionState(enabled = true, hasSession = true, consumedMs = 60_000, exhausted = true,
+                activity = activity, observedAt = 1000,
+                temporary = TemporaryColorState(minutes * 60_000L, activeSince = 1000))
+            val deadline = 1000 + minutes * 60_000L
+            val original = state.temporary
+            assertNull(event(SessionEvent.Deadline(state.generation), deadline - 1).effect)
+            assertEquals(1L, state.temporary!!.remaining(deadline - 1))
+            assertEquals(original, state.temporary)
+            val expired = event(SessionEvent.Deadline(state.generation), deadline)
+            if (activity == DeviceActivity.UNLOCKED) {
+                assertEquals(OperationPurpose.REACTIVATE, expired.purpose)
+                assertNull(state.temporary)
+            } else {
+                assertNull(expired.effect)
+                assertEquals(0L, state.temporary!!.remaining(deadline))
+                assertNull(state.deadline(config)) // Do not schedule expired callbacks repeatedly.
+                assertEquals(deadline, state.temporary!!.deadlineElapsed)
+                assertEquals(OperationPurpose.REACTIVATE,
+                    event(SessionEvent.Observe(DeviceActivity.UNLOCKED), deadline + 10_000).purpose)
+            }
+        }
+    }
+    @Test fun staleDeadlineDoesNotEndOrExtendTheElapsedInterval() {
+        begin(); val generation = state.generation
+        event(SessionEvent.Observe(DeviceActivity.LOCKED), 20_000)
+        val before = state
+        assertNull(event(SessionEvent.Deadline(generation), 90_000).effect)
+        assertEquals(before, state)
+        assertEquals(60_000L, state.temporary!!.deadlineElapsed)
     }
     @Test fun disableCancelsOverrideAndGenerationRejectsOldTimer() {
         begin(); val generation = state.generation

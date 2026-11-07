@@ -42,13 +42,15 @@ object MonitoringPresentation {
         val temporary = cp.session.temporary
         val display = when {
             temporary != null && temporary.remaining(now) > 0 -> "Temporary color: ${CountdownFormatter.remaining(temporary.remaining(now), economical)}"
-            temporary != null -> "Temporary color ended — grayscale pending unlock"
+            temporary != null -> if (cp.session.activity == DeviceActivity.UNLOCKED)
+                "Temporary color ended — applying grayscale…" else "Temporary color ended — grayscale pending unlock"
             state.display.ownsGrayscale -> "Grayscale active"
             cp.session.exhausted || cp.session.remaining(cp.config, now) == 0L ->
                 if (cp.session.activity == DeviceActivity.UNLOCKED) "Applying grayscale…" else "Grayscale pending unlock"
             else -> "Color: ${CountdownFormatter.remaining(cp.session.remaining(cp.config, now), economical)}"
         }
-        val pause = if (cp.session.activity == DeviceActivity.LOCKED && (!cp.session.exhausted || temporary != null))
+        val pause = if (temporary != null) display
+        else if (cp.session.activity == DeviceActivity.LOCKED && !cp.session.exhausted)
             "$display · waiting for unlock"
         else if (cp.session.activity != DeviceActivity.UNLOCKED) "Paused — $display" else display
         return if (cp.interrupted) "$pause · recovered after interruption" else pause

@@ -47,7 +47,7 @@ class NotificationCountdownTest {
         for (now in 41_001L..100_999L step 1000) assertEquals(finalMinute, NotificationCountdown.presentation(state, now))
     }
     @Test fun pausedMinuteCopyUsesSingularAtExactlyOneMinute() {
-        for (state in listOf(color(), temporary())) {
+        for (state in listOf(color())) {
             val label = if (state.checkpoint.session.temporary != null) "Temporary color" else "Color"
             val deadline = state.checkpoint.session.deadline(state.checkpoint.config)!!
             val paused = observe(state, DeviceActivity.OFF, deadline - 60_000)
@@ -59,7 +59,7 @@ class NotificationCountdownTest {
         }
     }
     @Test fun pausedPositiveSubsecondTimeNeverShowsZero() {
-        for (state in listOf(color(), temporary())) {
+        for (state in listOf(color())) {
             val label = if (state.checkpoint.session.temporary != null) "Temporary color" else "Color"
             val deadline = state.checkpoint.session.deadline(state.checkpoint.config)!!
             val paused = observe(state, DeviceActivity.OFF, deadline - 1)
@@ -87,9 +87,35 @@ class NotificationCountdownTest {
         assertEquals(NotificationCountdown.presentation(state, 41_000), NotificationCountdown.presentation(changed, 41_000))
         assertTrue(changed.checkpoint.session.exhausted)
         val off = observe(state, DeviceActivity.OFF, 60_000)
-        assertEquals("Temporary color: 0:41 remaining · Paused", NotificationCountdown.presentation(off, 90_000).text)
+        assertEquals("Temporary color: Less than a minute remaining", NotificationCountdown.presentation(off, 90_000).text)
+        assertEquals(101_000L, NotificationCountdown.presentation(off, 90_000).deadlineElapsed)
         val unlocked = observe(off, DeviceActivity.UNLOCKED, 90_000)
-        assertEquals(131_000L, NotificationCountdown.presentation(unlocked, 90_000).deadlineElapsed)
+        assertEquals(101_000L, NotificationCountdown.presentation(unlocked, 90_000).deadlineElapsed)
+    }
+    @Test fun temporaryLockedAndOffCountDownWithoutPauseAndSuppressExpiredChronometer() {
+        assertEquals("Temporary color ended — applying grayscale…", NotificationCountdown.presentation(temporary(), 101_000).text)
+        for (activity in listOf(DeviceActivity.OFF, DeviceActivity.LOCKED)) {
+            val state = observe(temporary(), activity, 20_000)
+            assertEquals("Temporary color: 2 minutes remaining", NotificationCountdown.presentation(state, 40_999).text)
+            for (now in listOf(41_000L, 80_000L, 100_999L)) {
+                assertEquals(NotificationPresentation("Temporary color: Less than a minute remaining", 101_000),
+                    NotificationCountdown.presentation(state, now))
+                assertFalse(MonitoringPresentation.text(state, now).contains("Paused"))
+                assertFalse(MonitoringPresentation.text(state, now).contains("waiting for unlock"))
+            }
+            assertNull(NotificationCountdown.presentation(state, 101_000).deadlineElapsed)
+            assertTrue(NotificationCountdown.presentation(state, 101_000).text.contains("grayscale pending unlock"))
+        }
+    }
+    @Test fun temporaryDeadlineAndEpochProjectionIgnoreWallClockTimezoneAndDstEdits() {
+        val state = temporary()
+        val plan = NotificationCountdown.presentation(state, 80_000)
+        val wall = 1_700_000_000_000L
+        for (shift in listOf(-86_400_000L, -3_600_000L, 0L, 3_600_000L, 86_400_000L)) {
+            assertEquals(wall + shift + 21_999L, plan.whenMillis(80_000, wall + shift))
+            assertEquals(101_000L, plan.deadlineElapsed)
+            assertEquals(21_000L, state.checkpoint.session.temporary!!.remaining(80_000))
+        }
     }
     @Test fun pendingAttentionStartupAndStoppedStatesHaveNoNativeCountdown() {
         val state = color()
