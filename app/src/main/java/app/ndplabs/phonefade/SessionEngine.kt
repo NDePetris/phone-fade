@@ -46,7 +46,7 @@ sealed interface SessionEvent {
     data class Deadline(val generation: Long) : SessionEvent
     data object ConfigurationChanged : SessionEvent
     data class Recover(val activity: DeviceActivity) : SessionEvent
-    data object RequestTemporaryColor : SessionEvent
+    data class RequestTemporaryColor(val durationMinutes: Int) : SessionEvent
 }
 
 data class SessionTransition(val state: SessionState, val effect: DisplayEffect? = null,
@@ -78,9 +78,10 @@ object SessionEngine {
             observedAt = now, generation = old.generation + 1)
         var effect: DisplayEffect? = null
         var purpose: OperationPurpose? = null
-        if (event == SessionEvent.RequestTemporaryColor) {
-            if (!old.exhausted || old.temporary != null || old.activity != DeviceActivity.UNLOCKED) return SessionTransition(old)
-            return SessionTransition(state.copy(temporary = TemporaryColorState(config.temporaryMs)),
+        if (event is SessionEvent.RequestTemporaryColor) {
+            if (event.durationMinutes !in 1..120 || !old.exhausted || old.temporary != null ||
+                old.activity != DeviceActivity.UNLOCKED) return SessionTransition(old)
+            return SessionTransition(state.copy(temporary = TemporaryColorState(event.durationMinutes * 60_000L)),
                 DisplayEffect.RESTORE, OperationPurpose.TEMPORARY_COLOR)
         }
         if (event is SessionEvent.Observe) {
