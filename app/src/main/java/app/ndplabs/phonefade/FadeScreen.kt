@@ -6,6 +6,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -32,7 +33,7 @@ import kotlinx.coroutines.isActive
 
 @Composable
 fun FadeScreen(state: MonitoringState, notificationsVisible: Boolean, feedback: Flow<CommandFeedback> = emptyFlow(),
-    restore: () -> Unit, manualEnable: () -> Unit, temporaryColor: () -> Unit,
+    restore: () -> Unit, manualEnable: () -> Unit, temporaryColor: (Int) -> Unit,
     configure: (MonitoringConfig) -> Unit, start: () -> Unit) {
     val owner = LocalLifecycleOwner.current
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
@@ -119,7 +120,10 @@ fun FadeScreen(state: MonitoringState, notificationsVisible: Boolean, feedback: 
 }
 
 @Composable
-internal fun StatusHero(state: MonitoringState, now: Long, restore: () -> Unit, temporaryColor: () -> Unit, start: () -> Unit) {
+internal fun StatusHero(state: MonitoringState, now: Long, restore: () -> Unit, temporaryColor: (Int) -> Unit, start: () -> Unit) {
+    var choosingTemporary by rememberSaveable { mutableStateOf(false) }
+    val eligible = MonitoringPresentation.canUseTemporaryColor(state)
+    LaunchedEffect(eligible) { if (!eligible) choosingTemporary = false }
     val hero = QuietRoadPresentation.hero(state, now)
     Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer) {
@@ -160,9 +164,10 @@ internal fun StatusHero(state: MonitoringState, now: Long, restore: () -> Unit, 
                 }
                 hero.history?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 Spacer(Modifier.height(4.dp))
+                val openTemporaryPicker: () -> Unit = { choosingTemporary = true }
                 fun click(action: HeroAction) = when (action) {
                     HeroAction.START, HeroAction.RESUME -> start
-                    HeroAction.TEMPORARY -> temporaryColor
+                    HeroAction.TEMPORARY -> openTemporaryPicker
                     HeroAction.DISABLE, HeroAction.RESTORE -> restore
                 }
                 fun enabled(action: HeroAction) = state.ready && when (action) {
@@ -174,7 +179,7 @@ internal fun StatusHero(state: MonitoringState, now: Long, restore: () -> Unit, 
                     Button(onClick = click(action), enabled = enabled(action), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                         Text(action.label)
                     }
-                    if (action == HeroAction.TEMPORARY) Text("${CountdownFormatter.minutes(state.savedConfig.temporaryMinutes)} of unlocked use. Allowance stays exhausted.",
+                    if (action == HeroAction.TEMPORARY) Text("Choose 5, 15, 30, 60, or custom minutes of unlocked use. Allowance stays exhausted.",
                         style = MaterialTheme.typography.bodySmall)
                 }
                 hero.secondary?.let { action ->
@@ -185,6 +190,63 @@ internal fun StatusHero(state: MonitoringState, now: Long, restore: () -> Unit, 
             }
         }
     }
+    if (choosingTemporary && eligible) {
+        TemporaryColorPicker(
+            defaultCustomMinutes = state.savedConfig.temporaryMinutes,
+            onDismiss = { choosingTemporary = false },
+            onConfirm = { minutes ->
+                choosingTemporary = false
+                temporaryColor(minutes)
+            },
+        )
+    }
+}
+
+@Composable
+internal fun TemporaryColorPicker(defaultCustomMinutes: Int, onDismiss: () -> Unit, onConfirm: (Int) -> Unit) {
+    var selected by rememberSaveable { mutableIntStateOf(5) }
+    var custom by rememberSaveable { mutableStateOf(defaultCustomMinutes.toString()) }
+    val duration = if (selected == 0) custom.toIntOrNull() else selected
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Temporary color duration") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Only unlocked use counts. Screen-off and locked time pauses the timer.",
+                    style = MaterialTheme.typography.bodyMedium)
+                listOf(5, 15, 30, 60, 0).forEach { option ->
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                            .selectable(selected == option, role = Role.RadioButton, onClick = { selected = option }),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = selected == option, onClick = null)
+                        Text(when (option) {
+                            0 -> "Custom"
+                            60 -> "1 hour"
+                            else -> "$option minutes"
+                        }, modifier = Modifier.padding(start = 8.dp))
+                    }
+                }
+                if (selected == 0) {
+                    OutlinedTextField(
+                        value = custom, onValueChange = { custom = it },
+                        label = { Text("Custom duration (minutes)") },
+                        supportingText = { Text("Enter 1–120 whole minutes.") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        isError = duration == null || duration !in 1..120,
+                        singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { duration?.let(onConfirm) }, enabled = duration != null && duration in 1..120) {
+                Text("Use color")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
