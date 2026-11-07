@@ -179,7 +179,7 @@ internal fun StatusHero(state: MonitoringState, now: Long, restore: () -> Unit, 
                     Button(onClick = click(action), enabled = enabled(action), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                         Text(action.label)
                     }
-                    if (action == HeroAction.TEMPORARY) Text("Choose 5, 15, 30, 60, or custom minutes of unlocked use. Allowance stays exhausted.",
+                    if (action == HeroAction.TEMPORARY) Text("Choose 5, 15, 30 minutes, 1 hour, or custom. Only unlocked use counts.",
                         style = MaterialTheme.typography.bodySmall)
                 }
                 hero.secondary?.let { action ->
@@ -267,7 +267,7 @@ internal fun TimingSettings(config: MonitoringConfig, enabled: Boolean, save: (M
             }
             TimingValue("Color allowance", config.allowanceMinutes)
             TimingValue("Reset interval", config.resetMinutes)
-            TimingValue("Temporary color", config.temporaryMinutes)
+            TimingValue("Default custom duration", config.temporaryMinutes)
             if (dirty) Text("Unsaved changes", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
             Disclosure("Edit timing settings", expanded, R.drawable.ic_road_edit) { expanded = !expanded }
             if (!enabled) Text("Timing settings are unavailable while attention is required or the app is initializing.", style = MaterialTheme.typography.bodySmall)
@@ -275,9 +275,9 @@ internal fun TimingSettings(config: MonitoringConfig, enabled: Boolean, save: (M
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     MinuteField("Color allowance", allowance, config.allowanceMinutes, enabled) { allowance = it }
                     MinuteField("Reset interval", reset, config.resetMinutes, enabled) { reset = it }
-                    MinuteField("Temporary color duration", temporary, config.temporaryMinutes, enabled) { temporary = it }
+                    MinuteField("Default custom duration", temporary, config.temporaryMinutes, enabled) { temporary = it }
                 }
-                Text("Temporary duration changes apply next time. Saving does not clear used time or reset an exhausted allowance.",
+                Text("This duration pre-fills Custom in the temporary-color picker. Saving does not clear used time or reset an exhausted allowance.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedButton(onClick = { draft.config()?.let(save) }, enabled = draft.canSave(config, enabled),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
