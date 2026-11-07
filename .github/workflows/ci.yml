@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug testDebugUnitTest testReleaseUnitTest check lintDebug lintRelease --no-watch-fs --console=plain
+          ./gradlew assembleDebug assembleDebugAndroidTest testDebugUnitTest testReleaseUnitTest check lintDebug lintRelease --no-watch-fs --console=plain
 
       - name: Check APK has no Internet permission
         shell: bash
