@@ -1,5 +1,38 @@
 # Offramp Fade validation
 
+## Temporary-color duration picker — November 7, 2026 (PR validation pending)
+
+**Scope:** Replace the immediate temporary-color action with a picker for 5, 15,
+30, 60, or Custom (1–120) minutes of unlocked use. Selection flows through the
+existing coordinator/reducer and saves the chosen duration to the existing v2
+checkpoint. Saved settings now describe the Custom default; the permission,
+notification timing, grayscale controller, restoration journal, reset semantics,
+and automatic startup behavior are unchanged. Related: GitHub #20; boot startup
+is separately tracked as #21.
+
+### Automated checks
+
+New unit cases exercise per-request preset and custom durations, invalid values,
+durability across configuration changes, and existing expiry/accounting behavior.
+Native Compose instrumentation coverage has been updated to select a preset and
+validate the Custom field. **These new tests have not been executed in this
+environment.** Run the JDK 17 AGENTS.md build, unit-test, check and lint tasks,
+then verify packaged permissions remain unchanged and no Internet permission is
+present. A passing build is not physical display acceptance.
+
+### Manual device tests and risks
+
+**Not performed.** No device, system color setting, grant, installed APK or
+existing recovery journal was modified. Before considering this change accepted,
+test each preset and Custom, real locked/unlocked accounting, shorter and qualifying
+screen-off breaks, notification countdowns, repeated requests, permission and
+external-correction conflicts, restoration/readback versus actual color, process
+recreation, and failed persistence on an authorized Pixel 9 Pro session. Protect
+the exact original external-settings snapshot first. Reboot and user stop still
+cancel monitoring per existing policy; exact restart after those events is not
+part of this feature.
+
+
 ## Focused Quiet Road refinement — October 14, 2026
 
 Base `3b7076f`, same `feature/quiet-road-ui` branch. Only supplied attachments were
